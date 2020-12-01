@@ -48,7 +48,7 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             IlluminaDataType.PF));
     protected static final Log log = Log.getInstance(UnsortedBasecallsConverter.class);
 
-    protected final IlluminaDataProviderFactory factory;
+    protected final IlluminaDataProviderFactory[] laneFactories;
     protected final boolean demultiplex;
     protected final boolean ignoreUnexpectedBarcodes;
     protected final Map<String, ? extends ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD>> barcodeRecordWriterMap;
@@ -69,7 +69,7 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
      *
      * @param basecallsDir                 Where to read basecalls from.
      * @param barcodesDir                  Where to read barcodes from (optional; use basecallsDir if not specified).
-     * @param lane                         What lane to process.
+     * @param lanes                        What lanes to process.
      * @param readStructure                How to interpret each cluster.
      * @param barcodeRecordWriterMap       Map from barcode to CLUSTER_OUTPUT_RECORD writer.  If demultiplex is false, must contain
      *                                     one writer stored with key=null.
@@ -86,7 +86,7 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     public BasecallsConverter(
             final File basecallsDir,
             final File barcodesDir,
-            final int lane,
+            final int[] lanes,
             final ReadStructure readStructure,
             final Map<String, ? extends ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD>> barcodeRecordWriterMap,
             final boolean demultiplex,
@@ -104,11 +104,14 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         this.demultiplex = demultiplex;
         this.numThreads = numThreads;
 
-        this.factory = new IlluminaDataProviderFactory(basecallsDir,
-                barcodesDir, lane, readStructure, bclQualityEvaluationStrategy, getDataTypesFromReadStructure(readStructure, demultiplex));
-        this.factory.setApplyEamssFiltering(applyEamssFiltering);
+        this.laneFactories = new IlluminaDataProviderFactory[lanes.length];
+        for(int i = 0; i < lanes.length; i++) {
+            this.laneFactories[i] = new IlluminaDataProviderFactory(basecallsDir,
+                    barcodesDir, lanes[i], readStructure, bclQualityEvaluationStrategy, getDataTypesFromReadStructure(readStructure, demultiplex));
+            this.laneFactories[i].setApplyEamssFiltering(applyEamssFiltering);
+        }
         this.includeNonPfReads = includeNonPfReads;
-        this.tiles = factory.getAvailableTiles();
+        this.tiles = laneFactories[0].getAvailableTiles();
         tiles.sort(TILE_NUMBER_COMPARATOR);
         setTileLimits(firstTile, tileLimit);
         tileWriteExecutor = new ThreadPoolExecutorWithExceptions(numWriteThreads);
@@ -300,8 +303,8 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
      *
      * @return A factory used for create the underlying data provider.
      */
-    protected IlluminaDataProviderFactory getFactory() {
-        return factory;
+    protected IlluminaDataProviderFactory[] getLaneFactories() {
+        return laneFactories;
     }
 
     /**

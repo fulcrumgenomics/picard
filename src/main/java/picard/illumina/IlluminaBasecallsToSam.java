@@ -44,6 +44,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * IlluminaBasecallsToSam transforms a lane of Illumina data file formats (bcl, locs, clocs, qseqs, etc.) into
@@ -122,7 +123,7 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
     public File BARCODES_DIR;
 
     @Argument(doc = "Lane number. ", shortName = StandardOptionDefinitions.LANE_SHORT_NAME)
-    public Integer LANE;
+    public List<Integer> LANE;
 
     @Argument(doc = "Deprecated (use LIBRARY_PARAMS).  The output SAM or BAM file. Format is determined by extension.",
             shortName = StandardOptionDefinitions.OUTPUT_SHORT_NAME,
@@ -254,6 +255,7 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
     private BasecallsConverter<SAMRecordsForCluster> basecallsConverter;
     private static final Log log = Log.getInstance(IlluminaBasecallsToSam.class);
     private final BclQualityEvaluationStrategy bclQualityEvaluationStrategy = new BclQualityEvaluationStrategy(MINIMUM_QUALITY);
+    private final Map<Integer, String> laneToReadGroupId = new HashMap<>();
 
     @Override
     protected int doWork() {
@@ -290,7 +292,7 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
         }
 
         final boolean demultiplex = readStructure.hasSampleBarcode();
-        BasecallsConverterBuilder<SAMRecordsForCluster> converterBuilder = new BasecallsConverterBuilder<>(BASECALLS_DIR, LANE, readStructure, barcodeSamWriterMap)
+        BasecallsConverterBuilder<SAMRecordsForCluster> converterBuilder = new BasecallsConverterBuilder<>(BASECALLS_DIR, LANE.stream().mapToInt(i->i).toArray(), readStructure, barcodeSamWriterMap)
                 .barcodesDir(BARCODES_DIR)
                 .withDemultiplex(demultiplex)
                 .numProcessors(NUM_PROCESSORS)
@@ -315,8 +317,8 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
          * Be sure to pass the outputReadStructure to ClusterDataToSamConverter, which reflects the structure of the output cluster
          * data which may be different from the input read structure (specifically if there are skips).
          */
-        final ClusterDataToSamConverter converter = new ClusterDataToSamConverter(RUN_BARCODE, READ_GROUP_ID,
-                basecallsConverter.getFactory().getOutputReadStructure(), adapters, BARCODE_POPULATION_STRATEGY, INCLUDE_BARCODE_QUALITY)
+        final ClusterDataToSamConverter converter = new ClusterDataToSamConverter(RUN_BARCODE, laneToReadGroupId,
+                basecallsConverter.getLaneFactories()[0].getOutputReadStructure(), adapters, BARCODE_POPULATION_STRATEGY, INCLUDE_BARCODE_QUALITY)
                 .withMolecularIndexTag(MOLECULAR_INDEX_TAG)
                 .withMolecularIndexQualityTag(MOLECULAR_INDEX_BASE_QUALITY_TAG)
                 .withTagPerMolecularIndex(TAG_PER_MOLECULAR_INDEX);
@@ -452,7 +454,7 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
     private Map<String, String> buildSamHeaderParameters(final List<String> barcodes) {
         final Map<String, String> params = new LinkedHashMap<>();
 
-        String platformUnit = RUN_BARCODE + "." + LANE;
+        String platformUnit = RUN_BARCODE + "." + LANE.stream().map(Object::toString).collect(Collectors.joining(","));
         if (barcodes != null) {
             final String barcodeString = IlluminaUtil.barcodeSeqsToString(barcodes);
             platformUnit += "." + barcodeString;
@@ -487,15 +489,19 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
                                                     final String libraryName, final Map<String, String> headerParameters,
                                                     final boolean presorted) {
         IOUtil.assertFileIsWritable(output);
-        final SAMReadGroupRecord rg = new SAMReadGroupRecord(READ_GROUP_ID);
-        rg.setSample(sampleAlias);
+        final List<SAMReadGroupRecord> rgs = LANE.stream().map(lane -> {
+            SAMReadGroupRecord rgr = new SAMReadGroupRecord(READ_GROUP_ID + "." + lane);
+            rgr.setSample(sampleAlias);
 
-        if (libraryName != null) rg.setLibrary(libraryName);
-        for (final Map.Entry<String, String> tagNameToValue : headerParameters.entrySet()) {
-            if (tagNameToValue.getValue() != null) {
-                rg.setAttribute(tagNameToValue.getKey(), tagNameToValue.getValue());
+            if (libraryName != null) rgr.setLibrary(libraryName);
+            for (final Map.Entry<String, String> tagNameToValue : headerParameters.entrySet()) {
+                if (tagNameToValue.getValue() != null) {
+                    rgr.setAttribute(tagNameToValue.getKey(), tagNameToValue.getValue());
+                }
             }
-        }
+            return rgr;
+        }).collect(Collectors.toList());
+
 
         final SAMFileHeader header = new SAMFileHeader();
 
@@ -504,7 +510,9 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
         } else {
             header.setSortOrder(SAMFileHeader.SortOrder.unsorted);
         }
-        header.addReadGroup(rg);
+        for (SAMReadGroupRecord rg : rgs) {
+            header.addReadGroup(rg);
+        }
         return new SAMFileWriterWrapper(new SAMFileWriterFactory().makeSAMOrBAMWriter(header, presorted, output));
     }
 
@@ -537,7 +545,12 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
         }
 
         if (READ_GROUP_ID == null) {
-            READ_GROUP_ID = RUN_BARCODE.substring(0, Math.min(RUN_BARCODE.length(), 5)) + "." + LANE;
+            READ_GROUP_ID = RUN_BARCODE.substring(0, Math.min(RUN_BARCODE.length(), 5));
+        }
+
+        // Build a map of lane to read group id.
+        for(Integer lane : LANE){
+            laneToReadGroupId.put(lane, READ_GROUP_ID + "." + lane);
         }
 
         if (!TAG_PER_MOLECULAR_INDEX.isEmpty() && TAG_PER_MOLECULAR_INDEX.size() != readStructure.molecularBarcode.length()) {

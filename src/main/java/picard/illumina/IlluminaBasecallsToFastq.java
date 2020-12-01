@@ -111,7 +111,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
     public File BARCODES_DIR;
 
     @Argument(doc = "Lane number. ", shortName = StandardOptionDefinitions.LANE_SHORT_NAME)
-    public Integer LANE;
+    public List<Integer> LANE;
 
     @Argument(doc = "The prefix for output FASTQs.  Extensions as described above are appended.  Use this option for a non-barcoded run, or" +
             " for a barcoded run in which it is not desired to demultiplex reads into separate files by barcode.",
@@ -269,7 +269,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             demultiplex = true;
         }
 
-        BasecallsConverterBuilder<ClusterData> converterBuilder = new BasecallsConverterBuilder<>(BASECALLS_DIR, LANE, readStructure, sampleBarcodeClusterWriterMap)
+        BasecallsConverterBuilder<ClusterData> converterBuilder = new BasecallsConverterBuilder<>(BASECALLS_DIR, LANE.stream().mapToInt(i->i).toArray(), readStructure, sampleBarcodeClusterWriterMap)
                 .barcodesDir(BARCODES_DIR)
                 .withDemultiplex(demultiplex)
                 .numProcessors(NUM_PROCESSORS)
