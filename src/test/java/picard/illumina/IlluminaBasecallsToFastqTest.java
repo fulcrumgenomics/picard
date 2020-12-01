@@ -25,6 +25,7 @@ package picard.illumina;
 
 import htsjdk.samtools.fastq.FastqReader;
 import htsjdk.samtools.fastq.FastqRecord;
+import htsjdk.samtools.metrics.MetricsFile;
 import htsjdk.samtools.util.BufferedLineReader;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.LineReader;
@@ -34,10 +35,7 @@ import org.testng.annotations.Test;
 import picard.cmdline.CommandLineProgramTest;
 import picard.illumina.parser.ReadStructure;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.PrintWriter;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -122,32 +120,32 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
 
     @Test
     public void testDeMultiplexed() throws Exception {
-        runStandardTest(1, "multiplexedBarcode.", "mp_barcode.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR);
+        runStandardTest(1, "multiplexedBarcode.", "mp_barcode.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, 7, 0.038889);
     }
 
     @Test
     public void testDeMultiplexedWithIndex() throws Exception {
-        runStandardTest(1, "multiplexedBarcodeWithIndex.", "mp_barcode.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M);
+        runStandardTest(1, "multiplexedBarcodeWithIndex.", "mp_barcode.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M, 7, 0.038889);
     }
 
     @Test
     public void testDeMultiplexedWithtwoIndexes() throws Exception {
-        runStandardTest(1, "multiplexedBarcodeWithTwoIndexes.", "mp_barcode.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M);
+        runStandardTest(1, "multiplexedBarcodeWithTwoIndexes.", "mp_barcode.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M, 7, 0.038889);
     }
 
     @Test
     public void testDualBarcodes() throws Exception {
-        runStandardTest(1, "dualBarcode.", "barcode_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR);
+        runStandardTest(1, "dualBarcode.", "barcode_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 2, 0.033333);
     }
 
     @Test
     public void testCbclConvert() throws Exception {
-        runStandardTest(1, "dualBarcode.", "barcode_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR);
+        runStandardTest(1, "dualBarcode.", "barcode_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, 1, 0.02);
     }
 
     @Test
     public void testHiseqxSingleLocs() throws Exception {
-        runStandardTest(1, "hiseqxSingleLocs.", "barcode_double.params", 2, "25T8B8B25T",TEST_DATA_HISEQX_SINGLE_LOCS, HISEQX_TEST_DATA_DIR);
+        runStandardTest(1, "hiseqxSingleLocs.", "barcode_double.params", 2, "25T8B8B25T",TEST_DATA_HISEQX_SINGLE_LOCS, HISEQX_TEST_DATA_DIR, 4, 0.033333);
     }
 
     private void compareFastqs(File actual, File expected) {
@@ -185,7 +183,7 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
 
     private void runStandardTest(final int lane, final String jobName, final String libraryParamsFile,
                                  final int concatNColumnFields, final String readStructureString, final File baseCallsDir,
-                                 final File testDataDir) throws Exception {
+                                 final File testDataDir, final long expectedPfMatches, final Double expectedPctMatches) throws Exception {
         final File outputDir = File.createTempFile(jobName, ".dir");
         try {
             outputDir.delete();
@@ -198,47 +196,57 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
             final List<File> outputPrefixes = new ArrayList<File>();
             convertParamsFile(libraryParamsFile, concatNColumnFields, testDataDir, outputDir, libraryParams, outputPrefixes);
 
-            for (final boolean sort : new boolean[]{false, true}) {
-                runPicardCommandLine(new String[]{
-                        "BASECALLS_DIR=" + baseCallsDir,
-                        "LANE=" + lane,
-                        "RUN_BARCODE=HiMom",
-                        "READ_STRUCTURE=" + readStructureString,
-                        "MULTIPLEX_PARAMS=" + libraryParams,
-                        "MACHINE_NAME=machine1",
-                        "FLOWCELL_BARCODE=abcdeACXX",
-                        "MAX_RECORDS_IN_RAM=1000", //force spill to disk to test encode/decode,
-                        "SORT=" + sort
-                });
+            for (final boolean sort : new boolean[]{true, false}) {
+                for (final boolean otfBarcodeExtract : new boolean[]{true, false}) {
+                    final File metricsFile = File.createTempFile("ibtf.", ".metrics");
+                    metricsFile.deleteOnExit();
+                    runPicardCommandLine(new String[]{
+                            "BASECALLS_DIR=" + baseCallsDir,
+                            "LANE=" + lane,
+                            "RUN_BARCODE=HiMom",
+                            "READ_STRUCTURE=" + readStructureString,
+                            "MULTIPLEX_PARAMS=" + libraryParams,
+                            "MACHINE_NAME=machine1",
+                            "FLOWCELL_BARCODE=abcdeACXX",
+                            "MAX_RECORDS_IN_RAM=1000", //force spill to disk to test encode/decode,
+                            "SORT=" + sort,
+                            "BARCODE_EXTRACT=" + otfBarcodeExtract,
+                            "METRICS_FILE=" + metricsFile
+                    });
 
-                final ReadStructure readStructure = new ReadStructure(readStructureString);
-                for (final File prefix : outputPrefixes) {
-                    for (int i = 1; i <= readStructure.templates.length(); ++i) {
-                        final String filename = prefix.getName() + "." + i + ".fastq";
-                        if (sort) {
-                            IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                    final ReadStructure readStructure = new ReadStructure(readStructureString);
+                    for (final File prefix : outputPrefixes) {
+                        for (int i = 1; i <= readStructure.templates.length(); ++i) {
+                            final String filename = prefix.getName() + "." + i + ".fastq";
+                            if (sort) {
+                                IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                            } else {
+                                compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                            }
                         }
-                        else {
-                            compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                        for (int i = 1; i <= readStructure.sampleBarcodes.length(); ++i) {
+                            final String filename = prefix.getName() + ".barcode_" + i + ".fastq";
+                            if (sort) {
+                                IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                            } else {
+                                compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                            }
+                        }
+                        for (int i = 1; i <= readStructure.molecularBarcode.length(); ++i) {
+                            final String filename = prefix.getName() + ".index_" + i + ".fastq";
+                            if (sort) {
+                                IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                            } else {
+                                compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
+                            }
                         }
                     }
-                    for (int i = 1; i <= readStructure.sampleBarcodes.length(); ++i) {
-                        final String filename = prefix.getName() + ".barcode_" + i + ".fastq";
-                        if (sort) {
-                            IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
-                        else {
-                            compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
-                    }
-                    for (int i = 1; i <= readStructure.molecularBarcode.length(); ++i) {
-                        final String filename = prefix.getName() + ".index_" + i + ".fastq";
-                        if (sort) {
-                            IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
-                        else {
-                            compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
+
+                    if(otfBarcodeExtract) {
+                        final MetricsFile<BarcodeMetric, Integer> metrics = new MetricsFile<>();
+                        metrics.read(new FileReader(metricsFile));
+                        Assert.assertEquals(metrics.getMetrics().get(3).PERFECT_MATCHES, expectedPfMatches);
+                        Assert.assertEquals(metrics.getMetrics().get(3).PCT_MATCHES, expectedPctMatches);
                     }
                 }
             }

@@ -37,6 +37,7 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
     private boolean ignoreUnexpectedBarcodes = false;
     private boolean applyEamssFiltering = false;
     private boolean includeNonPfReads = false;
+    private BarcodeExtractor barcodeExtractor = null;
 
     /**
      * Constructs a new builder used for creating BasecallsConverter objects.
@@ -91,11 +92,11 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
                     tmpDirs, numThreads,
                     firstTile, tileLimit, outputRecordComparator,
                     codecPrototype,
-                    outputRecordClass, bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads);
+                    outputRecordClass, bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, barcodeExtractor);
         } else {
             return new UnsortedBasecallsConverter<>(basecallsDir, barcodesDir, lane, readStructure,
                     barcodeRecordWriterMap, demultiplex, numThreads, firstTile, tileLimit,
-                    bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads);
+                    bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, barcodeExtractor);
         }
     }
 
@@ -204,7 +205,7 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
      * @return A builder that will create a converter with barcodesDir set.
      */
     public BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> barcodesDir(File barcodesDir) {
-        this.barcodesDir = (barcodesDir == null) ? basecallsDir : barcodesDir;
+        this.barcodesDir = barcodesDir;
         return this;
     }
 
@@ -217,6 +218,11 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
      */
     public BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> withMaxRecordsInRam(int maxReadsInRam) {
         this.maxReadsInRamPerThread = Math.max(1, maxReadsInRam / this.numThreads);
+        return this;
+    }
+
+    public BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> withBarcodeExtractor(BarcodeExtractor barcodeExtractor) {
+        this.barcodeExtractor = barcodeExtractor;
         return this;
     }
 }

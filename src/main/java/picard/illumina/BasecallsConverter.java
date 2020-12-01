@@ -4,10 +4,7 @@ import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.ProgressLogger;
 import picard.PicardException;
-import picard.illumina.parser.ClusterData;
-import picard.illumina.parser.IlluminaDataProviderFactory;
-import picard.illumina.parser.IlluminaDataType;
-import picard.illumina.parser.ReadStructure;
+import picard.illumina.parser.*;
 import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
 import picard.util.ThreadPoolExecutorUtil;
 import picard.util.ThreadPoolExecutorWithExceptions;
@@ -53,7 +50,6 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     protected final boolean ignoreUnexpectedBarcodes;
     protected final Map<String, ? extends ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD>> barcodeRecordWriterMap;
     protected final boolean includeNonPfReads;
-    protected final int numThreads;
     protected final ProgressLogger readProgressLogger = new ProgressLogger(log, 1000000, "Read");
     protected final ProgressLogger writeProgressLogger = new ProgressLogger(log, 1000000, "Write");
     protected final Map<Integer, List<? extends Runnable>> completedWork = new HashMap<>();
@@ -61,8 +57,10 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     protected final ThreadPoolExecutorWithExceptions tileReadExecutor;
     protected final ThreadPoolExecutorWithExceptions completedWorkExecutor = new ThreadPoolExecutorWithExceptions(1);
     protected ClusterDataConverter<CLUSTER_OUTPUT_RECORD> converter = null;
+    protected int numThreads;
     protected List<Integer> tiles;
     protected boolean tileProcessingComplete = false;
+    protected BarcodeExtractor barcodeExtractor;
 
     /**
      * Constructs a new BasecallsConverter object.
@@ -97,18 +95,21 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             final boolean ignoreUnexpectedBarcodes,
             final boolean applyEamssFiltering,
             final boolean includeNonPfReads,
-            final int numWriteThreads
+            final int numWriteThreads,
+            final BarcodeExtractor barcodeExtractor
     ) {
         this.barcodeRecordWriterMap = barcodeRecordWriterMap;
         this.ignoreUnexpectedBarcodes = ignoreUnexpectedBarcodes;
         this.demultiplex = demultiplex;
+        this.barcodeExtractor = barcodeExtractor;
         this.numThreads = numThreads;
 
         this.factory = new IlluminaDataProviderFactory(basecallsDir,
-                barcodesDir, lane, readStructure, bclQualityEvaluationStrategy, getDataTypesFromReadStructure(readStructure, demultiplex));
+                barcodesDir, lane, readStructure, bclQualityEvaluationStrategy, getDataTypesFromReadStructure(readStructure, demultiplex, barcodesDir));
         this.factory.setApplyEamssFiltering(applyEamssFiltering);
         this.includeNonPfReads = includeNonPfReads;
         this.tiles = factory.getAvailableTiles();
+
         tiles.sort(TILE_NUMBER_COMPARATOR);
         setTileLimits(firstTile, tileLimit);
         tileWriteExecutor = new ThreadPoolExecutorWithExceptions(numWriteThreads);
@@ -284,11 +285,12 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
      *
      * @param readStructure The read structure that defines how the read is set up.
      * @param demultiplex   If true, output is split by barcode, otherwise all are written to the same output stream.
+     * @param barcodesDir
      * @return A data type array for each piece of data needed to satisfy the read structure.
      */
     protected static Set<IlluminaDataType> getDataTypesFromReadStructure(final ReadStructure readStructure,
-                                                                         final boolean demultiplex) {
-        if (!readStructure.hasSampleBarcode() || !demultiplex) {
+                                                                         final boolean demultiplex, File barcodesDir) {
+        if (!readStructure.hasSampleBarcode() || !demultiplex || barcodesDir == null) {
             return DATA_TYPES_WITHOUT_BARCODE;
         } else {
             return DATA_TYPES_WITH_BARCODE;
@@ -339,9 +341,45 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         }
     }
 
+    protected String maybeDemultiplex(ClusterData cluster, Map<String, BarcodeMetric> metrics, BarcodeMetric noMatch) {
+        String barcode = null;
+        if (demultiplex) {
+            // If there is no barcode parsed from barcode file try on the fly demux.
+            if (barcodeExtractor != null) {
+                int[] barcodeIndices = this.factory.getOutputReadStructure().sampleBarcodes.getIndices();
+                byte[][] readSubsequences = new byte[barcodeIndices.length][];
+                byte[][] qualityScores = new byte[barcodeIndices.length][];
+                for (int i = 0; i < barcodeIndices.length; i++) {
+                    ReadData barcodeRead = cluster.getRead(barcodeIndices[i]);
+                    readSubsequences[i] = barcodeRead.getBases();
+                    qualityScores[i] = barcodeRead.getQualities();
+                }
+                BarcodeExtractor.BarcodeMatch match = barcodeExtractor.findBestBarcode(readSubsequences,
+                        qualityScores);
+
+                BarcodeExtractor.updateMetrics(match, cluster.isPf(), metrics, noMatch);
+
+                if(match.isMatched()) barcode = match.getBarcode();
+                cluster.setMatchedBarcode(barcode);
+            } else {
+                barcode = cluster.getMatchedBarcode();
+            }
+        }
+        return barcode;
+    }
+
     protected void interruptAndShutdownExecutors(ThreadPoolExecutorWithExceptions... executors) {
         int tasksRunning = Arrays.stream(executors).mapToInt(test -> test.shutdownNow().size()).sum();
         throw new PicardException("Exceptions in tile processing. There were " + tasksRunning
                 + " tasks were still running or queued and have been cancelled.");
+    }
+
+    protected synchronized void updateMetrics(Map<String, BarcodeMetric> metrics, BarcodeMetric noMatch) {
+        if(barcodeExtractor != null) {
+            for (final String key : metrics.keySet()) {
+                barcodeExtractor.getMetrics().get(key).merge(metrics.get(key));
+            }
+            barcodeExtractor.getNoMatchMetric().merge(noMatch);
+        }
     }
 }
