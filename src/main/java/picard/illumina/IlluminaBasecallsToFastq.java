@@ -281,7 +281,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                 new FastqRecordsForClusterCodec(readStructure.templates.length(),
                         readStructure.sampleBarcodes.length(), readStructure.molecularBarcode.length()),
                 FastqRecordsForCluster.class, bclQualityEvaluationStrategy, IGNORE_UNEXPECTED_BARCODES,
-                APPLY_EAMSS_FILTER, INCLUDE_NON_PF_READS, FORCE_GC
+                APPLY_EAMSS_FILTER, INCLUDE_NON_PF_READS
         );
 
         basecallsConverter.setConverter(

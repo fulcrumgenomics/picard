@@ -27,24 +27,23 @@ public class BasecallsConverterFactory<CLUSTER_OUTPUT_RECORD> {
             final BclQualityEvaluationStrategy bclQualityEvaluationStrategy,
             final boolean ignoreUnexpectedBarcodes,
             final boolean applyEamssFiltering,
-            final boolean includeNonPfReads,
-            final boolean forceGc
+            final boolean includeNonPfReads
     ) {
-        if (IlluminaFileUtil.hasCbcls(basecallsDir, lane)) {
+     //   if (IlluminaFileUtil.hasCbcls(basecallsDir, lane)) {
             if (barcodesDir == null) barcodesDir = basecallsDir;
             return new NewIlluminaBasecallsConverter<>(basecallsDir, barcodesDir, lane, readStructure,
                     barcodeRecordWriterMap, demultiplex, maxReadsInRamPerTile,
                     tmpDirs, numProcessors,
                     firstTile, tileLimit, outputRecordComparator,
                     codecPrototype,
-                    outputRecordClass, bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes);
-        } else {
+                    outputRecordClass, bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads);
+    /*    } else {
             return new IlluminaBasecallsConverter<>(basecallsDir, barcodesDir, lane, readStructure,
                     barcodeRecordWriterMap, demultiplex, maxReadsInRamPerTile, tmpDirs, numProcessors,
                     forceGc, firstTile, tileLimit, outputRecordComparator,
                     codecPrototype,
                     outputRecordClass, bclQualityEvaluationStrategy,
                     applyEamssFiltering, includeNonPfReads, ignoreUnexpectedBarcodes);
-        }
+        }*/
     }
 }

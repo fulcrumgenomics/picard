@@ -27,17 +27,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.locks.Lock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     private static final Log log = Log.getInstance(NewIlluminaBasecallsConverter.class);
-   // private final List<File> cbcls;
-    private final List<AbstractIlluminaPositionFileReader.PositionInfo> locs = new ArrayList<>();
-    //private final File[] filterFiles;
     private final Map<String, ThreadPoolExecutorWithExceptions> barcodeWriterThreads = new HashMap<>();
-    private final Map<Integer, List<RecordWriter>> completedWork = Collections.synchronizedMap(new HashMap<>());
+    private final Map<Integer, List<RecordWriter>> completedWork = new HashMap<>();
     private final Map<Integer, File> barcodesFiles = new HashMap<>();
+    private boolean tileProcessingComplete = false;
+    final boolean includeNonPfReads;
 
     /**
      * @param basecallsDir             Where to read basecalls from.
@@ -51,8 +51,8 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
      * @param tmpDirs                  For SortingCollection spilling.
      * @param numProcessors            Controls number of threads.  If <= 0, the number of threads allocated is
      *                                 available cores - numProcessors.
-     * @param firstTile                (For debugging) If non-null, start processing at this tile.
-     * @param tileLimit                (For debugging) If non-null, process no more than this many tiles.
+     * @param firstTile                (For infoging) If non-null, start processing at this tile.
+     * @param tileLimit                (For infoging) If non-null, process no more than this many tiles.
      * @param outputRecordComparator   For sorting output records within a single tile.
      * @param codecPrototype           For spilling output records to disk.
      * @param outputRecordClass        Inconveniently needed to create SortingCollections.
@@ -70,12 +70,17 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
                                          final SortingCollection.Codec<CLUSTER_OUTPUT_RECORD> codecPrototype,
                                          final Class<CLUSTER_OUTPUT_RECORD> outputRecordClass,
                                          final BclQualityEvaluationStrategy bclQualityEvaluationStrategy,
-                                         final boolean ignoreUnexpectedBarcodes) {
+                                         final boolean ignoreUnexpectedBarcodes,
+                                         final boolean applyEamssFiltering,
+                                         final boolean includeNonPfReads
+                                         ) {
 
         super(barcodeRecordWriterMap, maxReadsInRamPerTile, tmpDirs, codecPrototype, ignoreUnexpectedBarcodes,
                 demultiplex, outputRecordComparator, bclQualityEvaluationStrategy,
                 outputRecordClass, numProcessors, new IlluminaDataProviderFactory(basecallsDir,
                         barcodesDir, lane, readStructure, bclQualityEvaluationStrategy, getDataTypesFromReadStructure(readStructure, demultiplex)));
+        this.factory.setApplyEamssFiltering(applyEamssFiltering);
+        this.includeNonPfReads = includeNonPfReads;
         this.tiles = new ArrayList<>();
         final File laneDir = new File(basecallsDir, IlluminaFileUtil.longLaneStr(lane));
         final Pattern filterRegex = Pattern.compile(ParameterizedFileUtil.escapePeriods(
@@ -131,8 +136,16 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
         tileProcessingExecutor.shutdown();
 
         //wait for all the threads to complete before checking for errors
-        ThreadPoolExecutorUtil.awaitThreadPoolTermination("Reading executor", tileProcessingExecutor, Duration.ofMinutes(5));
+        ThreadPoolExecutorUtil.awaitThreadPoolTermination("Reading executor", tileProcessingExecutor, Duration.ofSeconds(5));
+        tileProcessingComplete = true;
+        synchronized (completedWork){
+            log.debug("Final notification of work complete.");
+            completedWork.notifyAll();
+        }
         ThreadPoolExecutorUtil.awaitThreadPoolTermination("Tile completion executor", completedWorkExecutor, Duration.ofMinutes(5));
+
+        //we are all done scheduling work.. now schedule the closes
+        barcodeRecordWriterMap.forEach((barcode, writer) -> barcodeWriterThreads.get(barcode).submit(new Closer(writer, barcode)));
 
         barcodeWriterThreads.values().forEach(ThreadPoolExecutor::shutdown);
         barcodeWriterThreads.forEach((barcode, executor) -> ThreadPoolExecutorUtil.awaitThreadPoolTermination(barcode + " writer", executor, Duration.ofMinutes(5)));
@@ -162,6 +175,7 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
 
         @Override
         public void run() {
+            log.info("Writing out barcode " + barcode);
             for (final CLUSTER_OUTPUT_RECORD record : recordCollection) {
                 writer.write(record);
                 writeProgressLogger.record(null, 0);
@@ -184,7 +198,7 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
 
         @Override
         public void run() {
-            log.debug("Closing writer for barcode " + barcode);
+            log.info("Closing writer for barcode " + barcode);
             this.writer.close();
         }
     }
@@ -207,7 +221,9 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
                 final ClusterData cluster = dataProvider.next();
                 readProgressLogger.record(null, 0);
                 final String barcode = (demultiplex ? cluster.getMatchedBarcode() : null);
-                addRecord(barcode, converter.convertClusterToOutputRecord(cluster));
+                if (cluster.isPf() || includeNonPfReads) {
+                    addRecord(barcode, converter.convertClusterToOutputRecord(cluster));
+                }
             }
 
             dataProvider.close();
@@ -217,11 +233,19 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
                 value.doneAdding();
                 final ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD> writer = barcodeRecordWriterMap.get(barcode);
                 writerList.add(new RecordWriter(writer, value, barcode));
-
             });
-            completedWork.put(tileNum, writerList);
+
+            notifyWorkComplete(writerList);
 
             log.info("Finished processing tile " + tileNum);
+        }
+
+        private void notifyWorkComplete(List<RecordWriter> writerList) {
+            synchronized ( completedWork ) {
+                log.info("Notifying completed work. " + tileNum);
+                completedWork.put(tileNum, writerList);
+                completedWork.notifyAll();
+            }
         }
 
         private synchronized void addRecord(final String barcode, final CLUSTER_OUTPUT_RECORD record) {
@@ -263,24 +287,29 @@ class NewIlluminaBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConv
 
         @Override
         public void run() {
-            while (currentTileIndex < tiles.size()) {
-                final Integer currentTile = tiles.get(currentTileIndex);
-                if (completedWork.containsKey(currentTile)) {
-                    log.info("Writing out tile " + currentTile);
-                    completedWork.get(currentTile).forEach(writer -> barcodeWriterThreads.get(writer.getBarcode()).submit(writer));
-                    currentTileIndex++;
-                } else {
-                    try {
-                        Thread.sleep(5000);
-                    } catch (final InterruptedException e) {
-                        throw new PicardException(e.getMessage(), e);
+            try {
+                checkCompletedWork();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void checkCompletedWork() throws InterruptedException {
+            synchronized (completedWork) {
+                while (currentTileIndex < tiles.size()) {
+                    if (!tileProcessingComplete) {
+                        log.debug("Waiting for completed work.");
+                        completedWork.wait();
+                    }
+                    final Integer currentTile = tiles.get(currentTileIndex);
+                    if (completedWork.containsKey(currentTile)) {
+                        log.debug("Writing out tile " + currentTile);
+                        completedWork.get(currentTile).forEach(writer -> barcodeWriterThreads.get(writer.getBarcode()).submit(writer));
+                        // Wait only if tile processing is still occurring
+                        currentTileIndex++;
                     }
                 }
             }
-
-            //we are all done scheduling work.. now schedule the closes
-            barcodeRecordWriterMap.forEach((barcode, writer) -> barcodeWriterThreads.get(barcode).submit(new Closer(writer, barcode)));
         }
-
     }
 }

@@ -313,7 +313,7 @@ public class IlluminaBasecallsToSam extends CommandLineProgram {
                 FIRST_TILE, TILE_LIMIT, new QueryNameComparator(),
                 new Codec(numOutputRecords),
                 SAMRecordsForCluster.class, bclQualityEvaluationStrategy, IGNORE_UNEXPECTED_BARCODES,
-                APPLY_EAMSS_FILTER, INCLUDE_NON_PF_READS, FORCE_GC
+                APPLY_EAMSS_FILTER, INCLUDE_NON_PF_READS
         );
         /*
          * Be sure to pass the outputReadStructure to ClusterDataToSamConverter, which reflects the structure of the output cluster
