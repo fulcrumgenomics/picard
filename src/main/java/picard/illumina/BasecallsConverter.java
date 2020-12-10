@@ -111,20 +111,7 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
 
         this.factory.setApplyEamssFiltering(applyEamssFiltering);
         this.includeNonPfReads = includeNonPfReads;
-        this.tiles = new ArrayList<>();
-        final File laneDir = new File(basecallsDir, IlluminaFileUtil.longLaneStr(lane));
-
-        final Pattern filterRegex = Pattern.compile(ParameterizedFileUtil.escapePeriods(
-                ParameterizedFileUtil.makeLaneTileRegex(".filter", lane)));
-        File[] filterFiles = getTiledFiles(laneDir, filterRegex);
-        for (final File filterFile : filterFiles) {
-            final Matcher tileMatcher = filterRegex.matcher(filterFile.getName());
-            if (tileMatcher.matches()) {
-                tiles.add(Integer.valueOf(tileMatcher.group(1)));
-            }
-        }
-
-        IOUtil.assertFilesAreReadable(Arrays.asList(filterFiles));
+        this.tiles = factory.getAvailableTiles();
         tiles.sort(TILE_NUMBER_COMPARATOR);
         setTileLimits(firstTile, tileLimit);
         barcodeRecordWriterMap.keySet().forEach(barcode -> barcodeWriterThreads.put(barcode, new ThreadPoolExecutorWithExceptions(1)));
@@ -213,7 +200,7 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         tileProcessingExecutor.shutdown();
 
         // Wait for all the threads to complete before checking for errors
-        ThreadPoolExecutorUtil.awaitThreadPoolTermination("Reading executor", tileProcessingExecutor, Duration.ofSeconds(5));
+        ThreadPoolExecutorUtil.awaitThreadPoolTermination("Reading executor", tileProcessingExecutor, Duration.ofMinutes(5));
         tileProcessingComplete = true;
         synchronized (completedWork) {
             log.debug("Final notification of work complete.");
