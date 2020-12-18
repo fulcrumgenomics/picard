@@ -183,9 +183,7 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     }
 
     public void doTileProcessing() {
-
         final ThreadPoolExecutorWithExceptions completedWorkExecutor = new ThreadPoolExecutorWithExceptions(1);
-
         final CompletedWorkChecker workChecker = new CompletedWorkChecker();
         completedWorkExecutor.submit(workChecker);
         completedWorkExecutor.shutdown();
