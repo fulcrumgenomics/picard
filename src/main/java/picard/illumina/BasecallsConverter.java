@@ -29,25 +29,24 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     public static final IlluminaDataType[] DATA_TYPES_WITHOUT_BARCODE =
             Arrays.copyOfRange(DATA_TYPES_WITH_BARCODE, 0, DATA_TYPES_WITH_BARCODE.length - 1);
 
-    protected final BclQualityEvaluationStrategy bclQualityEvaluationStrategy;
-    protected final IlluminaDataProviderFactory factory;
-    final Comparator<CLUSTER_OUTPUT_RECORD> outputRecordComparator;
-    final int maxReadsInRamPerTile;
-    final boolean demultiplex;
-    final List<File> tmpDirs;
-    final boolean ignoreUnexpectedBarcodes;
-    final SortingCollection.Codec<CLUSTER_OUTPUT_RECORD> codecPrototype;
-    final Class<CLUSTER_OUTPUT_RECORD> outputRecordClass;
-    final Map<String, ? extends ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD>> barcodeRecordWriterMap;
-    final ProgressLogger readProgressLogger = new ProgressLogger(log, 1000000, "Read");
-    final ProgressLogger writeProgressLogger = new ProgressLogger(log, 1000000, "Write");
-    final boolean includeNonPfReads;
+    private final IlluminaDataProviderFactory factory;
+    private final Comparator<CLUSTER_OUTPUT_RECORD> outputRecordComparator;
+    private final int maxReadsInRamPerTile;
+    private final boolean demultiplex;
+    private final List<File> tmpDirs;
+    private final boolean ignoreUnexpectedBarcodes;
+    private final SortingCollection.Codec<CLUSTER_OUTPUT_RECORD> codecPrototype;
+    private final Class<CLUSTER_OUTPUT_RECORD> outputRecordClass;
+    private final Map<String, ? extends ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD>> barcodeRecordWriterMap;
+    private final ProgressLogger readProgressLogger = new ProgressLogger(log, 1000000, "Read");
+    private final ProgressLogger writeProgressLogger = new ProgressLogger(log, 1000000, "Write");
+    private final boolean includeNonPfReads;
     private final Map<String, ThreadPoolExecutorWithExceptions> barcodeWriterThreads = new HashMap<>();
     private final Map<Integer, List<RecordWriter>> completedWork = new HashMap<>();
-    private final Map<Integer, File> barcodesFiles = new HashMap<>();
-    protected List<Integer> tiles;
-    int numThreads;
-    ClusterDataConverter<CLUSTER_OUTPUT_RECORD> converter = null;
+    private final File[] barcodesFiles;
+    private final int numThreads;
+    private int[] tiles;
+    private ClusterDataConverter<CLUSTER_OUTPUT_RECORD> converter = null;
     private boolean tileProcessingComplete = false;
 
 
@@ -96,7 +95,6 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         this.ignoreUnexpectedBarcodes = ignoreUnexpectedBarcodes;
         this.demultiplex = demultiplex;
         this.outputRecordComparator = outputRecordComparator;
-        this.bclQualityEvaluationStrategy = bclQualityEvaluationStrategy;
         this.outputRecordClass = outputRecordClass;
         this.factory = new IlluminaDataProviderFactory(basecallsDir,
                 barcodesDir, lane, readStructure, bclQualityEvaluationStrategy, getDataTypesFromReadStructure(readStructure, demultiplex));
@@ -112,7 +110,9 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         this.factory.setApplyEamssFiltering(applyEamssFiltering);
         this.includeNonPfReads = includeNonPfReads;
         this.tiles = factory.getAvailableTiles();
-        tiles.sort(TILE_NUMBER_COMPARATOR);
+        int maxTileNum = Arrays.stream(tiles).max().orElse(0);
+        this.barcodesFiles = new File[maxTileNum + 1];
+
         setTileLimits(firstTile, tileLimit);
         barcodeRecordWriterMap.keySet().forEach(barcode -> barcodeWriterThreads.put(barcode, new ThreadPoolExecutorWithExceptions(1)));
 
@@ -120,15 +120,15 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             final Pattern barcodeRegex = Pattern.compile(ParameterizedFileUtil.escapePeriods(
                     ParameterizedFileUtil.makeBarcodeRegex(lane)));
             final File[] barcodeTileFiles = getTiledFiles(barcodesDir, barcodeRegex);
-            if (barcodeTileFiles.length < tiles.size()) {
+            if (barcodeTileFiles.length < tiles.length) {
                 throw new PicardException(String.format(
                         "Barcode files are required for each tile. Found %d expected %d.",
-                        barcodeTileFiles.length, tiles.size()));
+                        barcodeTileFiles.length, tiles.length));
             }
             for (final File barcodeFile : barcodeTileFiles) {
                 final Matcher tileMatcher = barcodeRegex.matcher(barcodeFile.getName());
                 if (tileMatcher.matches()) {
-                    barcodesFiles.put(Integer.valueOf(tileMatcher.group(1)), barcodeFile);
+                    barcodesFiles[Integer.parseInt(tileMatcher.group(1))] = barcodeFile;
                 }
             }
         }
@@ -167,18 +167,18 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     void setTileLimits(final Integer firstTile, final Integer tileLimit) {
         if (firstTile != null) {
             int i;
-            for (i = 0; i < tiles.size(); ++i) {
-                if (tiles.get(i).intValue() == firstTile.intValue()) {
-                    tiles = tiles.subList(i, tiles.size());
+            for (i = 0; i < tiles.length; ++i) {
+                if (tiles[i] == firstTile) {
+                    tiles = Arrays.copyOfRange(tiles, i, tiles.length);
                     break;
                 }
             }
-            if (tiles.get(0).intValue() != firstTile.intValue()) {
+            if (tiles[0] != firstTile) {
                 throw new PicardException("firstTile=" + firstTile + ", but that tile was not found.");
             }
         }
-        if (tileLimit != null && tiles.size() > tileLimit) {
-            tiles = tiles.subList(0, tileLimit);
+        if (tileLimit != null && tiles.length > tileLimit) {
+            tiles = Arrays.copyOfRange(tiles, 0, tileLimit);
         }
     }
 
@@ -194,7 +194,7 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         final ThreadPoolExecutorWithExceptions tileProcessingExecutor = new ThreadPoolExecutorWithExceptions(numThreads);
 
         for (final Integer tile : tiles) {
-            tileProcessingExecutor.submit(new TileProcessor(tile, barcodesFiles.get(tile)));
+            tileProcessingExecutor.submit(new TileProcessor(tile, barcodesFiles[tile]));
         }
 
         tileProcessingExecutor.shutdown();
@@ -373,13 +373,13 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
 
         private void checkCompletedWork() throws InterruptedException {
             synchronized (completedWork) {
-                while (currentTileIndex < tiles.size()) {
+                while (currentTileIndex < tiles.length) {
                     // Wait only if tile processing is still occurring
                     if (!tileProcessingComplete) {
                         log.debug("Waiting for completed work.");
                         completedWork.wait();
                     }
-                    final Integer currentTile = tiles.get(currentTileIndex);
+                    final int currentTile = tiles[currentTileIndex];
                     if (completedWork.containsKey(currentTile)) {
                         log.debug("Writing out tile. Tile: " + currentTile);
                         completedWork.get(currentTile).forEach(writer -> barcodeWriterThreads.get(writer.getBarcode()).submit(writer));
@@ -389,19 +389,4 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             }
         }
     }
-
-    public static final Comparator<Integer> TILE_NUMBER_COMPARATOR = (integer1, integer2) -> {
-        final String s1 = integer1.toString();
-        final String s2 = integer2.toString();
-        // Because a the tile number is followed by a colon, a tile number that
-        // is a prefix of another tile number should sort after. (e.g. 10 sorts after 100).
-        if (s1.length() < s2.length()) {
-            if (s2.startsWith(s1)) {
-                return 1;
-            }
-        } else if (s2.length() < s1.length() && s1.startsWith(s2)) {
-            return -1;
-        }
-        return s1.compareTo(s2);
-    };
 }

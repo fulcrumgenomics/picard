@@ -27,6 +27,6 @@ public class MultiTileBclFileFaker extends FileFaker {
 
     @Override
     protected int bufferSize() {
-        return ((size - Integer.SIZE) * tiles.size()) + Integer.SIZE;
+        return ((size - Integer.SIZE) * tiles.length) + Integer.SIZE;
     }
 }

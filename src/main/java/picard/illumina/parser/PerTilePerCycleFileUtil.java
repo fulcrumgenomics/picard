@@ -7,7 +7,6 @@ import picard.illumina.parser.readers.BclReader;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -40,9 +39,8 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
     protected CycleIlluminaFileMap getPerTilePerCycleFiles() {
         final CycleIlluminaFileMap cycledMap = new CycleIlluminaFileMap();
 
-        final File laneDir = base;
         final File[] tempCycleDirs;
-        tempCycleDirs = IOUtil.getFilesMatchingRegexp(laneDir, IlluminaFileUtil.CYCLE_SUBDIRECTORY_PATTERN);
+        tempCycleDirs = IOUtil.getFilesMatchingRegexp(base, IlluminaFileUtil.CYCLE_SUBDIRECTORY_PATTERN);
         if (tempCycleDirs == null || tempCycleDirs.length == 0) {
             return cycledMap;
         }
@@ -59,7 +57,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
             cycledMap.put(getCycleFromDir(cycleDir), fileMap);
         }
 
-        this.tiles = new ArrayList<>(uniqueTiles);
+        this.tiles = uniqueTiles.stream().mapToInt(Number::intValue).toArray();
         return cycledMap;
     }
 
@@ -67,7 +65,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
         return cycleFileMap;
     }
 
-    public CycleIlluminaFileMap getFiles(final List<Integer> tiles) {
+    public CycleIlluminaFileMap getTileFiles(final int[] tiles) {
         return cycleFileMap.keep(tiles, detectedCycles);
     }
 
@@ -78,7 +76,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
      * @param cycles Cycles that should be present in the output CycleIlluminaFileMap
      * @return A CycleIlluminaFileMap with all available tiles but at most the cycles passed in by the cycles parameter
      */
-    public CycleIlluminaFileMap getFiles(final int[] cycles) {
+    public CycleIlluminaFileMap getCycleFiles(final int[] cycles) {
         //Remove any cycles that were discovered to be NON-EXISTENT when this util was instantiated
         final Set<Integer> filteredCycles = removeNonExistentCycles(cycles);
         return cycleFileMap.keep(tiles, filteredCycles);
@@ -91,7 +89,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
      * @param cycles Cycles that should be present in the output CycleIlluminaFileMap
      * @return A CycleIlluminaFileMap with at most the tiles/cycles listed in the parameters
      */
-    public CycleIlluminaFileMap getFiles(final List<Integer> tiles, final int[] cycles) {
+    public CycleIlluminaFileMap getPerTilePerCycleFiles(final int[] tiles, final int[] cycles) {
         //Remove any cycles that were discovered to be NON-EXISTENT when this util was instantiated
         final Set<Integer> filteredCycles = removeNonExistentCycles(cycles);
         return cycleFileMap.keep(tiles, filteredCycles);
@@ -119,7 +117,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
      *
      * @return A list of tile integers for all tiles available
      */
-    public List<Integer> getTiles() {
+    public int[] getTiles() {
         return tiles;
     }
 
@@ -135,14 +133,14 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
     }
 
     @Override
-    public List<String> verify(final List<Integer> expectedTiles, final int[] expectedCycles) {
+    public List<String> verify(int[] expectedTiles, final int[] expectedCycles) {
         final List<String> failures = new LinkedList<String>();
         final Map<Integer, Long> tileToFileLengthMap = new HashMap<Integer, Long>();
 
         if (!base.exists()) {
             failures.add("Base directory(" + base.getAbsolutePath() + ") does not exist!");
         } else {
-            final CycleIlluminaFileMap cfm = getFiles(expectedTiles, expectedCycles);
+            final CycleIlluminaFileMap cfm = getPerTilePerCycleFiles(expectedTiles, expectedCycles);
             for (final int currentCycle : expectedCycles) {
                 final IlluminaFileMap fileMap = cfm.get(currentCycle);
                 if (fileMap != null) {
@@ -179,7 +177,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
     }
 
     @Override
-    public List<String> fakeFiles(final List<Integer> expectedTiles, final int[] expectedCycles,
+    public List<String> fakeFiles(final int[] expectedTiles, final int[] expectedCycles,
                                   final IlluminaFileUtil.SupportedIlluminaFormat format) {
         final List<String> failures = new LinkedList<String>();
 
@@ -210,12 +208,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
                 for (final Integer tile : expectedTiles) {
                     final File fileToFake = new File(base + File.separator + getFileForCycle(currentCycle, tile));
                     try {
-                        if (tileToSizeMap.containsKey(tile)) {
-                            faker.fakeFile(fileToFake, tileToSizeMap.get(tile));
-                        }
-                        else{
-                            faker.fakeFile(fileToFake, 1);
-                        }
+                        faker.fakeFile(fileToFake, tileToSizeMap.getOrDefault(tile, 1));
                     } catch (final IOException e) {
                         failures.add("Could not create fake file: " + e.getMessage());
                     }
@@ -229,11 +222,7 @@ public class PerTilePerCycleFileUtil extends ParameterizedFileUtil {
                     try {
                         if (cycleFile == null) {
                             final File fileToFake = new File(base + File.separator + getFileForCycle(currentCycle, tile));
-                            if (tileToSizeMap.containsKey(tile)) {
-                                faker.fakeFile(fileToFake, tileToSizeMap.get(tile));
-                            } else {
-                                faker.fakeFile(fileToFake, 1);
-                            }
+                            faker.fakeFile(fileToFake, tileToSizeMap.getOrDefault(tile, 1));
                         }
                     } catch (final IOException e) {
                         failures.add("Could not create fake file: " + e.getMessage());

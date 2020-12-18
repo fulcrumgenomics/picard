@@ -30,6 +30,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import picard.cmdline.CommandLineProgramTest;
+import picard.illumina.parser.IlluminaFileUtil;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -65,9 +66,9 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
 
     @Test
     public void testTileNumberComparator() {
-        Assert.assertTrue(BasecallsConverter.TILE_NUMBER_COMPARATOR.compare(100, 10) < 0, "");
-        Assert.assertTrue(BasecallsConverter.TILE_NUMBER_COMPARATOR.compare(20, 200) > 0, "");
-        Assert.assertTrue(BasecallsConverter.TILE_NUMBER_COMPARATOR.compare(10, 10) == 0, "");
+        Assert.assertTrue(IlluminaFileUtil.TILE_NUMBER_COMPARATOR.compare(100, 10) < 0, "");
+        Assert.assertTrue(IlluminaFileUtil.TILE_NUMBER_COMPARATOR.compare(20, 200) > 0, "");
+        Assert.assertTrue(IlluminaFileUtil.TILE_NUMBER_COMPARATOR.compare(10, 10) == 0, "");
     }
 
 

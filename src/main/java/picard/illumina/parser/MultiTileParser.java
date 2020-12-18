@@ -26,10 +26,7 @@ package picard.illumina.parser;
 import htsjdk.samtools.util.PeekIterator;
 import picard.PicardException;
 
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Abstract class for files with fixed-length records for multiple tiles, e.g. .locs and .filter files.
@@ -50,11 +47,11 @@ public abstract class MultiTileParser<OUTPUT_RECORD extends IlluminaData> implem
      * @param supportedTypes The data types(s) that are provided by this file type, used to decide what file types to read.
      */
     public MultiTileParser(final TileIndex tileIndex,
-                           final List<Integer> requestedTiles,
+                           final int[] requestedTiles,
                            final Set<IlluminaDataType> supportedTypes) {
         this.tileIndex = tileIndex;
         this.tileIndexIterator = tileIndex.iterator();
-        this.requestedTilesIterator = new PeekIterator<Integer>(requestedTiles.iterator());
+        this.requestedTilesIterator = new PeekIterator<>(Arrays.stream(requestedTiles).iterator());
         this.supportedTypes = supportedTypes;
     }
 
@@ -107,7 +104,7 @@ public abstract class MultiTileParser<OUTPUT_RECORD extends IlluminaData> implem
     }
 
     @Override
-    public void verifyData(final List<Integer> tiles, final int[] cycles) {
+    public void verifyData(final int[] tiles, final int[] cycles) {
         final List<String> tileErrors = tileIndex.verify(tiles);
         if (!tileErrors.isEmpty()) throw new PicardException(tileErrors.get(0));
         //No need to validate cycles until such time as this class is used for cycle-oriented data types

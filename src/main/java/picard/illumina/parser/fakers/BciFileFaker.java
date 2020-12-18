@@ -30,14 +30,14 @@ public class BciFileFaker extends FileFaker {
 
     @Override
     protected int bufferSize() {
-        return 8 * tiles.size();
+        return 8 * tiles.length;
     }
 
-    public void fakeBciFile(final File bci, final List<Integer> expectedTiles) throws IOException {
+    public void fakeBciFile(final File bci, final int[]  expectedTiles) throws IOException {
         tiles = expectedTiles;
         final FileOutputStream fileOutputStream = new FileOutputStream(bci);
         final FileChannel channel = fileOutputStream.getChannel();
-        final ByteBuffer buffer = ByteBuffer.allocate(8 * expectedTiles.size());
+        final ByteBuffer buffer = ByteBuffer.allocate(8 * expectedTiles.length);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
         fakeFile(buffer);

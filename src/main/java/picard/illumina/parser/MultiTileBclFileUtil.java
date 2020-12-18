@@ -44,7 +44,7 @@ public class MultiTileBclFileUtil extends ParameterizedFileUtil {
 
     }
 
-    public CycleIlluminaFileMap getFiles(final List<Integer> tiles, final int[] cycles) {
+    public CycleIlluminaFileMap getFiles(int[] tiles, final int[] cycles) {
         // Filter input list of cycles according to which actually exist
         final ArrayList<Integer> goodCycleList = new ArrayList<Integer>(cycles.length);
         for (final int cycle : cycles) {
@@ -76,15 +76,15 @@ public class MultiTileBclFileUtil extends ParameterizedFileUtil {
     }
 
     @Override
-    public List<Integer> getTiles() {
+    public int[] getTiles() {
         if (tileIndex == null) {
-            return Collections.emptyList();
+            return new int[0];
         }
         return tileIndex.getTiles();
     }
 
     @Override
-    public List<String> verify(final List<Integer> expectedTiles, final int[] expectedCycles) {
+    public List<String> verify(final int[] expectedTiles, final int[] expectedCycles) {
         if (tileIndex == null) {
             return Collections.singletonList("Tile index(" + bci.getAbsolutePath() + ") does not exist!");
         }
@@ -98,7 +98,7 @@ public class MultiTileBclFileUtil extends ParameterizedFileUtil {
     }
 
     @Override
-    public List<String> fakeFiles(final List<Integer> expectedTiles, final int[] expectedCycles,
+    public List<String> fakeFiles(final int[] expectedTiles, final int[] expectedCycles,
                                   final IlluminaFileUtil.SupportedIlluminaFormat format) {
         if (tileIndex == null) {
             return Collections.singletonList("Tile index(" + bci.getAbsolutePath() + ") does not exist!");

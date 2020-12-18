@@ -13,13 +13,14 @@ import java.io.*;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static htsjdk.samtools.util.CollectionUtil.makeList;
 
 public class IlluminaFileUtilTest {
     private static final int DEFAULT_LANE = 7;
-    private static final List<Integer> DEFAULT_TILES = makeList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
-    private static final List<Integer> DEFAULT_TILE_TEST_SUBSET = makeList(1, 4, 5, 6, 9, 10);
+    private static final int[] DEFAULT_TILES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    private static final int[] DEFAULT_TILE_TEST_SUBSET = {1, 4, 5, 6, 9, 10};
     private static final int[] DEFAULT_CYCLES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
     private static final int DEFAULT_LAST_CYCLE = 20;
 
@@ -310,7 +311,7 @@ public class IlluminaFileUtilTest {
         final IlluminaFileMap fm = ptfu.getFiles();
         final IlluminaFileMap fmWTiles = ptfu.getFiles(DEFAULT_TILES);
 
-        Assert.assertEquals(fm.size(), DEFAULT_TILES.size());
+        Assert.assertEquals(fm.size(), DEFAULT_TILES.length);
 
         for (final Integer tile : DEFAULT_TILES) {
             final File tFile = fm.get(tile);
@@ -321,11 +322,11 @@ public class IlluminaFileUtilTest {
             Assert.assertTrue(tFile.length() > 0);
         }
 
-        final List<Integer> tiles = new ArrayList<Integer>(DEFAULT_TILE_TEST_SUBSET);
+        final List<Integer> tiles = Arrays.stream(DEFAULT_TILE_TEST_SUBSET).boxed().collect(Collectors.toList());
         final IlluminaFileMap subsetMap = ptfu.getFiles(DEFAULT_TILE_TEST_SUBSET);
         for (final Integer tile : subsetMap.keySet()) {
             tiles.remove(tile);
-            Assert.assertTrue(DEFAULT_TILE_TEST_SUBSET.contains(tile));
+            Assert.assertTrue(Arrays.stream(DEFAULT_TILE_TEST_SUBSET).anyMatch( t -> t == tile));
             final File tFile = subsetMap.get(tile);
             Assert.assertEquals(tFile, makePerTileFile(parentDir, DEFAULT_LANE, tile, ptfu.extension, compression, longFormat));
             Assert.assertTrue(tFile.exists());
@@ -357,8 +358,8 @@ public class IlluminaFileUtilTest {
     }
 
     public void testDefaultPerTilePerCycleUtil(final PerTilePerCycleFileUtil pcfu, final File parentDir, final int[] cycles) {
-        final CycleIlluminaFileMap cfm = pcfu.getFiles(cycles);
-        final CycleIlluminaFileMap cfmWTiles = pcfu.getFiles(DEFAULT_TILES, cycles);
+        final CycleIlluminaFileMap cfm = pcfu.getCycleFiles(cycles);
+        final CycleIlluminaFileMap cfmWTiles = pcfu.getPerTilePerCycleFiles(DEFAULT_TILES, cycles);
         final CycleIlluminaFileMap cfmNoCycles;
         if (Arrays.equals(cycles, DEFAULT_CYCLES)) {
             cfmNoCycles = pcfu.getFiles();
@@ -397,11 +398,11 @@ public class IlluminaFileUtilTest {
 
 
     public void testSubsetDefaultPerTilePerCycleUtil(final PerTilePerCycleFileUtil pcfu, final File parentDir, final int[] cycles) {
-        final List<Integer> tiles = new ArrayList<Integer>(DEFAULT_TILE_TEST_SUBSET);
-        final CycleIlluminaFileMap subsetMap = pcfu.getFiles(DEFAULT_TILE_TEST_SUBSET, cycles);
+        final List<Integer> tiles = Arrays.stream(DEFAULT_TILE_TEST_SUBSET).boxed().collect(Collectors.toList());
+        final CycleIlluminaFileMap subsetMap = pcfu.getPerTilePerCycleFiles(DEFAULT_TILE_TEST_SUBSET, cycles);
         final CycleIlluminaFileMap cfmNoCycles;
         if (Arrays.equals(cycles, DEFAULT_CYCLES)) {
-            cfmNoCycles = pcfu.getFiles(DEFAULT_TILE_TEST_SUBSET);
+            cfmNoCycles = pcfu.getCycleFiles(DEFAULT_TILE_TEST_SUBSET);
         } else {
             cfmNoCycles = null;
         }
@@ -417,7 +418,7 @@ public class IlluminaFileUtilTest {
 
 
             for (final Integer tile : subsetMap.get(cycle).keySet()) {
-                Assert.assertTrue(DEFAULT_TILE_TEST_SUBSET.contains(tile));
+                Assert.assertTrue(Arrays.stream(DEFAULT_TILE_TEST_SUBSET).anyMatch( t -> t == tile));
                 tiles.remove(tile);
                 final File tcFile = tFileIter.get(tile);
                 if (tFileIter2 != null) {
@@ -483,7 +484,7 @@ public class IlluminaFileUtilTest {
 
         Assert.assertFalse(noFilesPcfu.filesAvailable());
         Assert.assertTrue(noFilesPcfu.getFiles().isEmpty());
-        Assert.assertTrue(noFilesPcfu.getFiles(DEFAULT_TILES).isEmpty());
+        Assert.assertTrue(noFilesPcfu.getCycleFiles(DEFAULT_TILES).isEmpty());
     }
 
     @DataProvider(name = "missingCycleDataRanges")
@@ -507,7 +508,7 @@ public class IlluminaFileUtilTest {
 
         Assert.assertTrue(pcfu.filesAvailable());
         final int[] cycles = cycleRange(9, 16);
-        final CycleIlluminaFileMap cfm = pcfu.getFiles(cycles);
+        final CycleIlluminaFileMap cfm = pcfu.getCycleFiles(cycles);
         cfm.assertValid(DEFAULT_TILES, cycles);
     }
 
@@ -552,12 +553,12 @@ public class IlluminaFileUtilTest {
 
 
     public static void makeFiles(final SupportedIlluminaFormat format, final File intensityDir, final int lane,
-                                 final List<Integer> tiles, final int[] cycles) {
+                                 final int[] tiles, final int[] cycles) {
         makeFiles(format, intensityDir, lane, tiles, cycles, null);
     }
 
     public static void makeFiles(final SupportedIlluminaFormat format, final File intensityDir, final int lane,
-                                 final List<Integer> tiles, final int[] cycles, final String compression) {
+                                 final int[] tiles, final int[] cycles, final String compression) {
         String laneDir = String.valueOf(lane);
         while (laneDir.length() < 3) {
             laneDir = "0" + laneDir;
@@ -598,7 +599,7 @@ public class IlluminaFileUtilTest {
         }
     }
 
-    private static void makePerTileFiles(final File parentDir, final int lane, final List<Integer> tiles, final String ext, final boolean longName) {
+    private static void makePerTileFiles(final File parentDir, final int lane, final int[]tiles, final String ext, final boolean longName) {
         if (!parentDir.exists()) {
             if (!parentDir.mkdir()) {
                 throw new RuntimeException("Couldn't create directory " + parentDir.getAbsolutePath());
@@ -610,7 +611,7 @@ public class IlluminaFileUtilTest {
         }
     }
 
-    private static void makePerTilePerCycleFiles(final File parentDir, final int lane, final List<Integer> tiles, final int[] cycles, final String ext) {
+    private static void makePerTilePerCycleFiles(final File parentDir, final int lane, int[] tiles, final int[] cycles, final String ext) {
         if (!parentDir.exists()) {
             if (!parentDir.mkdir()) {
                 throw new RuntimeException("Couldn't create directory " + parentDir.getAbsolutePath());

@@ -34,6 +34,7 @@ import java.io.File;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * General utils for dealing with IlluminaFiles as well as utils for specific, support formats.
@@ -126,12 +127,12 @@ public class IlluminaFileUtil {
                         }
 
                         @Override
-                        public List<String> verify(List<Integer> expectedTiles, int[] expectedCycles) {
+                        public List<String> verify(int[] expectedTiles, int[] expectedCycles) {
                             throw new NotImplementedException("Verify is not implemented for CBCLs");
                         }
 
                         @Override
-                        public List<String> fakeFiles(List<Integer> expectedTiles, int[] cycles, SupportedIlluminaFormat format) {
+                        public List<String> fakeFiles(int[] expectedTiles, int[] cycles, SupportedIlluminaFormat format) {
                             throw new NotImplementedException("Verify is not implemented for CBCLs");
                         }
 
@@ -182,7 +183,7 @@ public class IlluminaFileUtil {
     /**
      * Return the list of tiles we would expect for this lane based on the metrics found in InterOp/TileMetricsOut.bin
      */
-    public List<Integer> getExpectedTiles() {
+    public int[] getExpectedTiles() {
         IOUtil.assertFileIsReadable(tileMetricsOut);
         //Used just to ensure predictable ordering
         final TreeSet<Integer> expectedTiles = new TreeSet<>();
@@ -198,14 +199,14 @@ public class IlluminaFileUtil {
         }
 
         CloserUtil.close(tileMetrics);
-        return new ArrayList<>(expectedTiles);
+        return expectedTiles.stream().mapToInt(Number::intValue).toArray();
     }
 
     /**
      * Get the available tiles for the given formats, if the formats have tile lists that differ then
      * throw an exception, if any of the format
      */
-    public List<Integer> getActualTiles(final List<SupportedIlluminaFormat> formats) {
+    public int[] getActualTiles(final List<SupportedIlluminaFormat> formats) {
         if (formats == null) {
             throw new PicardException("Format list provided to getTiles was null!");
         }
@@ -221,20 +222,42 @@ public class IlluminaFileUtil {
                 .filter(ParameterizedFileUtil::checkTileCount).collect(Collectors.toList());
 
         if( tileBasedFormats.size() > 0) {
-            final List<Integer> expectedTiles = tileBasedFormats.get(0).getTiles();
+            final int[] unsortedTiles = tileBasedFormats.get(0).getTiles();
 
             tileBasedFormats.forEach(util ->   {
-            if (expectedTiles.size() != util.getTiles().size() || !expectedTiles.containsAll(util.getTiles())) {
+            Set<Integer> expectedSet = IntStream.of(unsortedTiles).boxed().collect(Collectors.toCollection(HashSet::new));
+            int[] missing = IntStream.of(util.getTiles()).filter(val -> !expectedSet.contains(val)).toArray();
+            if (unsortedTiles.length != util.getTiles().length || missing.length > 0) {
                 throw new PicardException(
                         "Formats do not have the same number of tiles! " + summarizeTileCounts(formats));
             }});
 
-            return expectedTiles;
+            // Return sorted tiles.
+            return Arrays.stream(unsortedTiles).
+                    boxed().
+                    sorted(TILE_NUMBER_COMPARATOR). // sort descending
+                    mapToInt(i -> i).
+                    toArray();
         } else {
             //we have no tile based file formats so we have no tiles.
-            return new ArrayList<>();
+            return new int[0];
         }
     }
+
+    public static final Comparator<Integer> TILE_NUMBER_COMPARATOR = (integer1, integer2) -> {
+        final String s1 = integer1.toString();
+        final String s2 = integer2.toString();
+        // Because a the tile number is followed by a colon, a tile number that
+        // is a prefix of another tile number should sort after. (e.g. 10 sorts after 100).
+        if (s1.length() < s2.length()) {
+            if (s2.startsWith(s1)) {
+                return 1;
+            }
+        } else if (s2.length() < s1.length() && s1.startsWith(s2)) {
+            return -1;
+        }
+        return s1.compareTo(s2);
+    };
 
     public File tileMetricsOut() {
         return tileMetricsOut;
@@ -257,23 +280,20 @@ public class IlluminaFileUtil {
     }
 
 
-    private String liToStr(final List<Integer> intList) {
-        if (intList.isEmpty()) {
+    private String liToStr(final int[] intList) {
+        if (intList.length == 0) {
             return "";
         }
 
-        final StringBuilder summary = new StringBuilder(String.valueOf(intList.get(0)));
-        for (int i = 1; i < intList.size(); i++) {
-            summary.append(", ").append(String.valueOf(intList.get(i)));
-        }
-
-        return summary.toString();
+        return IntStream.range(1, intList.length)
+                .mapToObj(i -> ", " + intList[i])
+                .collect(Collectors.joining("", String.valueOf(intList[0]), ""));
     }
 
     private String summarizeTileCounts(final List<SupportedIlluminaFormat> formats) {
         final StringBuilder summary;
         ParameterizedFileUtil pfu = getUtil(formats.get(0));
-        List<Integer> tiles = pfu.getTiles();
+        int[] tiles = pfu.getTiles();
         summary = new StringBuilder(pfu.extension + "(" + liToStr(tiles) + ")");
 
         for (final SupportedIlluminaFormat format : formats) {

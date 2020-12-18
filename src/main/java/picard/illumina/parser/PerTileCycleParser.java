@@ -184,9 +184,9 @@ abstract class PerTileCycleParser<ILLUMINA_DATA extends IlluminaData> implements
     }
 
     @Override
-    public void verifyData(List<Integer> tiles, final int[] cycles) {
+    public void verifyData(int[] tiles, final int[] cycles) {
         if (tiles == null) {
-            tiles = new ArrayList<Integer>(this.cyclesToTileFiles.keySet());
+            tiles = this.cyclesToTileFiles.keySet().stream().mapToInt(Number::intValue).toArray();
         }
         this.cyclesToTileFiles.assertValid(tiles, cycles);
     }

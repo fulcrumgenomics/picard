@@ -22,9 +22,11 @@ public class PerTileOrPerRunFileUtil extends PerTileFileUtil {
     }
 
     @Override
-    public void setTilesForPerRunFile(List<Integer> tiles) {
+    public void setTilesForPerRunFile(int[] tiles) {
         if (runFile != null) {
-            tiles.forEach(i -> fileMap.put(i, runFile));
+            for(int tile: tiles){
+                fileMap.put(tile, runFile);
+            }
             this.tiles = tiles;
         }
     }
@@ -35,7 +37,7 @@ public class PerTileOrPerRunFileUtil extends PerTileFileUtil {
     }
 
     @Override
-    public List<String> verify(final List<Integer> expectedTiles, final int[] expectedCycles) {
+    public List<String> verify(final int[] expectedTiles, final int[] expectedCycles) {
         // if we have a runFile the base should be the parent directory of that file and not
         // the lane base directory of a per tile file.
         final File baseDir = runFile != null ? runFile.getParentFile() : this.base;

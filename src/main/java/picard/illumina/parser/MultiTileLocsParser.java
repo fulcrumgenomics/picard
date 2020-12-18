@@ -38,10 +38,10 @@ public class MultiTileLocsParser extends MultiTileParser<PositionalData> {
     private final LocsFileReader reader;
     private final int lane;
 
-    public MultiTileLocsParser(final TileIndex tileIndex, final List<Integer> requestedTiles, final File locsFile, final int lane) {
+    public MultiTileLocsParser(final TileIndex tileIndex, final int[] requestedTiles, final File locsFile, final int lane) {
         super(tileIndex, requestedTiles, Collections.singleton(IlluminaDataType.Position));
         final int tileNumber;
-        if (requestedTiles.size() == 1) tileNumber = requestedTiles.get(0);
+        if (requestedTiles.length == 1) tileNumber = requestedTiles[0];
         else tileNumber = -1;
         this.reader = new LocsFileReader(locsFile, lane, tileNumber);
         this.lane = lane;

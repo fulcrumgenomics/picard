@@ -46,9 +46,9 @@ public abstract class MultiTileFileUtil<OUTPUT_RECORD extends IlluminaData> exte
     }
 
     @Override
-    public List<Integer> getTiles() {
+    public int[]  getTiles() {
         if (tileIndex == null) {
-            return Collections.emptyList();
+            return new int[0];
         }
         return tileIndex.getTiles();
     }
@@ -57,7 +57,7 @@ public abstract class MultiTileFileUtil<OUTPUT_RECORD extends IlluminaData> exte
      * expectedCycles are not checked in this implementation.
      */
     @Override
-    public List<String> verify(final List<Integer> expectedTiles, final int[] expectedCycles) {
+    public List<String> verify(final int[]  expectedTiles, final int[] expectedCycles) {
         if (tileIndex == null) {
             return Collections.singletonList("Tile index(" + bci.getAbsolutePath() + ") does not exist!");
         }
@@ -65,7 +65,7 @@ public abstract class MultiTileFileUtil<OUTPUT_RECORD extends IlluminaData> exte
     }
 
     @Override
-    public List<String> fakeFiles(final List<Integer> expectedTiles, final int[] expectedCycles,
+    public List<String> fakeFiles(final int[] expectedTiles, final int[] expectedCycles,
                                   final IlluminaFileUtil.SupportedIlluminaFormat format) {
         //we need to fake a bci file for the tile index
         final BciFileFaker bciFileFaker = new BciFileFaker();
@@ -87,7 +87,7 @@ public abstract class MultiTileFileUtil<OUTPUT_RECORD extends IlluminaData> exte
         return tileIndex.verify(expectedTiles);
     }
 
-    abstract IlluminaParser<OUTPUT_RECORD> makeParser(List<Integer> requestedTiles);
+    abstract IlluminaParser<OUTPUT_RECORD> makeParser(int[] requestedTiles);
 
 }
 
@@ -101,7 +101,7 @@ class MultiTileFilterFileUtil extends MultiTileFileUtil<PfData> {
     }
 
     @Override
-    IlluminaParser<PfData> makeParser(final List<Integer> requestedTiles) {
+    IlluminaParser<PfData> makeParser(final int[] requestedTiles) {
         return new MultiTileFilterParser(tileIndex, requestedTiles, dataFile);
     }
 }
@@ -113,7 +113,7 @@ class MultiTileLocsFileUtil extends MultiTileFileUtil<PositionalData> {
     }
 
     @Override
-    IlluminaParser<PositionalData> makeParser(final List<Integer> requestedTiles) {
+    IlluminaParser<PositionalData> makeParser(final int[] requestedTiles) {
         return new MultiTileLocsParser(tileIndex, requestedTiles, dataFile, lane);
     }
 }

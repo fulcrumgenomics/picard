@@ -210,10 +210,10 @@ public class CollectHiSeqXPfFailMetrics extends CommandLineProgram {
         LOG.info("Processing with " + numProcessors + " PerTilePFMetricsExtractor(s).");
         final ExecutorService pool = Executors.newFixedThreadPool(numProcessors);
 
-        final List<PerTilePFMetricsExtractor> extractors = new ArrayList<PerTilePFMetricsExtractor>(factory.getAvailableTiles().size());
+        final List<PerTilePFMetricsExtractor> extractors = new ArrayList<>(factory.getAvailableTiles().length);
         for (final int tile : factory.getAvailableTiles()) {
             tileToSummaryMetrics.put(tile, new PFFailSummaryMetric(Integer.toString(tile)));
-            tileToDetailedMetrics.put(tile, new ArrayList<PFFailDetailedMetric>());
+            tileToDetailedMetrics.put(tile, new ArrayList<>());
 
             final PerTilePFMetricsExtractor extractor = new PerTilePFMetricsExtractor(
                     tile,

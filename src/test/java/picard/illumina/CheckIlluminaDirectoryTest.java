@@ -84,7 +84,7 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
         IOUtil.deleteDirectoryTree(illuminaDir);
     }
 
-    public void makeFiles(final SupportedIlluminaFormat[] formats, final int lane, final List<Integer> tiles,
+    public void makeFiles(final SupportedIlluminaFormat[] formats, final int lane, final int[] tiles,
                           final int[] cycles) {
         for (final IlluminaFileUtil.SupportedIlluminaFormat format : formats) {
             IlluminaFileUtilTest.makeFiles(format, intensityDir, lane, tiles, cycles);
@@ -92,9 +92,9 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
     }
 
     public String[] makeCheckerArgs(final File basecallDir, final int lane, final String readStructure,
-                                    final IlluminaDataType[] dataTypes, final List<Integer> filterTiles,
+                                    final IlluminaDataType[] dataTypes, final int[] filterTiles,
                                     final boolean makeFakeFiles, final boolean createSymLinks) {
-        final String[] dataTypeArgs = new String[dataTypes.length + filterTiles.size() + 5];
+        final String[] dataTypeArgs = new String[dataTypes.length + filterTiles.length + 5];
         dataTypeArgs[0] = "B=" + basecallDir;
         dataTypeArgs[1] = StandardOptionDefinitions.LANE_SHORT_NAME + "=" + lane;
         dataTypeArgs[2] = "RS=" + readStructure;
@@ -105,21 +105,21 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
             dataTypeArgs[i + 5] = "DT=" + dataTypes[i];
         }
 
-        if (!filterTiles.isEmpty()) {
+        if (filterTiles.length > 0) {
             final int start = dataTypes.length + 5;
             for (int i = start; i < dataTypeArgs.length; i++) {
-                dataTypeArgs[i] = "T=" + filterTiles.get(i - start);
+                dataTypeArgs[i] = "T=" + filterTiles[i - start];
             }
         }
         return dataTypeArgs;
     }
 
-    public File writeTileMetricsOutFile(final Map<Integer, List<Integer>> lanesToTiles) {
+    public File writeTileMetricsOutFile(final Map<Integer, int[]> lanesToTiles) {
         return writeTileMetricsOutFile(interopDir, (byte) 2, (byte) 10, lanesToTiles);
     }
 
     public File writeTileMetricsOutFile(final File interopDir, final byte versionNumber, final byte recordSize,
-                                        final Map<Integer, List<Integer>> lanesToTiles) {
+                                        final Map<Integer, int[]> lanesToTiles) {
         final File tileMetricsOut = new File(interopDir, "TileMetricsOut.bin");
         if (!tileMetricsOut.exists()) {
             try {
@@ -134,8 +134,8 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
         }
 
         int totalEntries = 0;
-        for (final Map.Entry<Integer, List<Integer>> l2t : lanesToTiles.entrySet()) {
-            totalEntries += l2t.getValue().size();
+        for (final Map.Entry<Integer, int[]> l2t : lanesToTiles.entrySet()) {
+            totalEntries += l2t.getValue().length;
         }
 
         final MappedByteBuffer buf;
@@ -167,15 +167,15 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
         return tileMetricsOut;
     }
 
-    public static Map<Integer, List<Integer>> makeMap(final List<Integer> lanes, final List<List<Integer>> tiles) {
-        final Map<Integer, List<Integer>> map = new HashMap<>();
+    public static Map<Integer, int[]> makeMap(final List<Integer> lanes, final int[][] tiles) {
+        final Map<Integer, int[]> map = new HashMap<>();
 
-        if (lanes.size() != tiles.size()) {
+        if (lanes.size() != tiles.length) {
             throw new IllegalArgumentException("Number of lanes (" + lanes + ") does not equal number of tiles!");
         }
 
         for (int i = 0; i < lanes.size(); i++) {
-            map.put(lanes.get(i), tiles.get(i));
+            map.put(lanes.get(i), tiles[i]);
         }
 
         return map;
@@ -188,35 +188,35 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
                         new SupportedIlluminaFormat[]{Bcl, Locs, Pos, Filter},
                         new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.Position,
                                 IlluminaDataType.PF},
-                        3, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 50),
-                        "25T25T", new ArrayList<Integer>()
+                        3, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 50),
+                        "25T25T", new int[0]
                 },
                 {
                         new SupportedIlluminaFormat[]{Bcl, Locs, Filter},
                         new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.Position,
                                 IlluminaDataType.PF},
-                        2, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 50),
-                        "8S15T8S", new ArrayList<Integer>()
+                        2, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 50),
+                        "8S15T8S", new int[0]
                 },
                 {
                         new SupportedIlluminaFormat[]{Bcl, Filter},
                         new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.PF},
-                        2, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 152),
-                        "68T8B68T", new ArrayList<Integer>()
+                        2, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 152),
+                        "68T8B68T", new int[0]
                 },
                 {
                         new SupportedIlluminaFormat[]{Bcl, Pos, Filter},
                         new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.Position,
                                 IlluminaDataType.PF},
-                        5, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 50),
-                        "25T25T", new ArrayList<Integer>()
+                        5, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 50),
+                        "25T25T", new int[0]
                 },
                 {
                         new SupportedIlluminaFormat[]{Bcl, Pos, Filter},
                         new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.Position,
                                 IlluminaDataType.PF},
-                        5, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 50),
-                        "25T25T", makeList(1301, 2101)
+                        5, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 50),
+                        "25T25T", new int[]{1301, 2101}
                 }
         };
     }
@@ -228,13 +228,13 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
     public void positiveTests(final IlluminaFileUtil.SupportedIlluminaFormat[] formats,
                               final IlluminaDataType[] dataTypes,
                               final int lane,
-                              final List<Integer> tiles,
+                              final int[] tiles,
                               final int[] cycles,
                               final String readStructure,
-                              final List<Integer> filterTiles) {
+                              final int[] filterTiles) {
         makeFiles(formats, lane, tiles, cycles);
         writeTileMetricsOutFile(makeMap(makeList(lane - 1, lane + 1, lane),
-                makeList(makeList(1, 2, 3), tiles, tiles)));
+                new int[][] {new int[]{1, 2, 3}, tiles, tiles}));
 
         final String[] args = makeCheckerArgs(basecallDir, lane, readStructure, dataTypes, filterTiles, false, false);
         Assert.assertEquals(runPicardCommandLine(args), 0);
@@ -249,17 +249,26 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
                                 IlluminaDataType.Position, IlluminaDataType.Barcodes},
                         new ArrayList<String>(),
                         new ArrayList<String>(),
-                        2, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 152),
+                        2, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 152),
                         "68T8B68T",
-                        2, new ArrayList<Integer>(), true
+                        2, new int[0], true
                 },
                 {
                         new SupportedIlluminaFormat[]{Bcl, Filter},
                         new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.PF},
                         makeList("BaseCalls/L002/C13.1/s_2_1201.bcl", "BaseCalls/L002/C13.1/s_2_2101.bcl"),
                         makeList("BaseCalls/L002/s_2_2101.filter"),
-                        2, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 20), "13T",
-                        3, new ArrayList<Integer>(), true
+                        2, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 20), "13T",
+                        3, new int[0], true
+                },
+                {
+                        new SupportedIlluminaFormat[]{Bcl, Filter},
+                        new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.PF},
+                        new ArrayList<String>(),
+                        new ArrayList<String>(),
+                        5, new int[]{1101, 1201, 1301, 2101, 2201, 2301}, IlluminaFileUtilTest.cycleRange(1, 152),
+                        "250T",
+                        98, new int[0], true
                 },
                 {
                         new SupportedIlluminaFormat[]{Bcl, Filter},
@@ -268,16 +277,7 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
                         new ArrayList<String>(),
                         5, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 152),
                         "250T",
-                        98, new ArrayList<Integer>(), true
-                },
-                {
-                        new SupportedIlluminaFormat[]{Bcl, Filter},
-                        new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores, IlluminaDataType.PF},
-                        new ArrayList<String>(),
-                        new ArrayList<String>(),
-                        5, makeList(1101, 1201, 1301, 2101, 2201, 2301), IlluminaFileUtilTest.cycleRange(1, 152),
-                        "250T",
-                        98, makeList(1301, 2201), true
+                        98, new int[]{301, 2201}, true
                 }
         };
     }
@@ -288,16 +288,17 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
                               final List<String> filesToDelete,
                               final List<String> filesToEmpty,
                               final int lane,
-                              final List<Integer> tiles,
+                              final int[] tiles,
                               final int[] cycles,
                               final String readStructure,
                               final int expectedNumErrors,
-                              final List<Integer> filterTiles,
+                              final int[] filterTiles,
                               final boolean makeFakeFiles) {
         makeFiles(formats, lane, tiles, cycles);
         IlluminaFileUtilTest.deleteRelativeFiles(intensityDir, filesToDelete);
         IlluminaFileUtilTest.emptyRelativeFiles(intensityDir, filesToEmpty);
-        writeTileMetricsOutFile(makeMap(makeList(lane - 1, lane + 1, lane), makeList(makeList(1, 2, 3), tiles, tiles)));
+        int[][] laneTileArray = {new int[]{1,2,3}, tiles, tiles};
+        writeTileMetricsOutFile(makeMap(makeList(lane - 1, lane + 1, lane), laneTileArray));
 
         final String[] args = makeCheckerArgs(basecallDir, lane, readStructure, dataTypes, filterTiles, makeFakeFiles, false);
         final int returnCode = runPicardCommandLine(args);
@@ -341,19 +342,19 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
     @Test
     public void differentSizedBclTest() {
         final int lane = 5;
-        final List<Integer> tiles = makeList(1, 2, 3, 4);
+        final int[] tiles = new int[]{1, 2, 3, 4};
         final int[] cycles = IlluminaFileUtilTest.cycleRange(1, 50);
         final IlluminaDataType[] dataTypes = new IlluminaDataType[]{BaseCalls, IlluminaDataType.QualityScores};
+        int[][] laneTileArray = {new int[]{1,2,3}, tiles, tiles};
 
         makeFiles(new SupportedIlluminaFormat[]{Bcl, Filter}, lane, tiles, cycles);
-        writeTileMetricsOutFile(makeMap(makeList(lane - 1, lane + 1, lane),
-                makeList(makeList(1, 2, 3), tiles, tiles)));
+        writeTileMetricsOutFile(makeMap(makeList(lane - 1, lane + 1, lane), laneTileArray));
 
         final File cycleDir = new File(basecallDir, "L005/C9.1");
         writeFileOfSize(new File(cycleDir, "s_5_3.bcl"), 222);
 
         final String[] args =
-                makeCheckerArgs(basecallDir, lane, "50T", dataTypes, new ArrayList<>(), false, false);
+                makeCheckerArgs(basecallDir, lane, "50T", dataTypes, new int[0], false, false);
         Assert.assertEquals(runPicardCommandLine(args), 1);
     }
 
@@ -361,7 +362,7 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
     public void basedirDoesntExistTest() {
         final String[] args = makeCheckerArgs(new File("a_made_up_file/in_some_weird_location"), 1, "76T76T",
                 new IlluminaDataType[]{IlluminaDataType.Position},
-                new ArrayList<>(), false, false);
+                new int[0], false, false);
         runPicardCommandLine(args);
     }
 
@@ -376,14 +377,15 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
     }
 
     public void symlinkTest(Boolean createSymlinks) {
-        final List<Integer> tileList = makeList(1101, 1102, 1103, 2101, 2102, 2103);
+        final int[] tileList = new int[]{1101, 1102, 1103, 2101, 2102, 2103};
         final int lane = 5;
         makeFiles(new SupportedIlluminaFormat[]{Bcl}, lane, tileList, IlluminaFileUtilTest.cycleRange(1, 50));
         String[] args =
-                makeCheckerArgs(basecallDir, lane, "50T", new IlluminaDataType[]{Position}, new ArrayList<>(),
+                makeCheckerArgs(basecallDir, lane, "50T", new IlluminaDataType[]{Position}, new int[0],
                         false,
                         createSymlinks);
-        writeTileMetricsOutFile(makeMap(makeList(lane), makeList(tileList)));
+        int[][] laneTileArray = {tileList};
+        writeTileMetricsOutFile(makeMap(makeList(lane), laneTileArray));
 
         createSingleLocsFile();
         // if we aren't creating symlinks we shouldn't create lane dirs
@@ -394,7 +396,7 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
         Assert.assertEquals(runPicardCommandLine(args), 0);
         //now that we have created the loc files lets test to make sure they are there
         args = makeCheckerArgs(basecallDir, lane, "50T", new IlluminaDataType[]{IlluminaDataType.Position},
-                new ArrayList<>(), false,
+                new int[0], false,
                 true);
 
         Assert.assertEquals(runPicardCommandLine(args), 0);
@@ -419,7 +421,7 @@ public class CheckIlluminaDirectoryTest extends CommandLineProgramTest {
         // Use "1S1T" since C1.1/L001_1.cbcl has incorrect value for the "compressedBlockSize" header
         // C2.1/*.cbcl have correct values. For the remaining cycles, some cbcl files are correct and some are not.
         final String[] args = 
-                makeCheckerArgs(CBCL_BASECALL_DIR, lane, "1S1T", dataTypes, new ArrayList<>(), false, false);
+                makeCheckerArgs(CBCL_BASECALL_DIR, lane, "1S1T", dataTypes, new int[0], false, false);
         Assert.assertEquals(runPicardCommandLine(args), 0);
     }
 

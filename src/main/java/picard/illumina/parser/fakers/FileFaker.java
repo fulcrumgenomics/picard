@@ -18,7 +18,7 @@ import java.util.zip.GZIPOutputStream;
 public abstract class FileFaker {
 
     int size;
-    List<Integer> tiles;
+    int[] tiles;
 
     protected abstract void fakeFile(ByteBuffer buffer);
 
@@ -27,29 +27,27 @@ public abstract class FileFaker {
     protected abstract int bufferSize();
 
     public void fakeFile(final File base, final int tile, final int lane, final String extension) throws IOException {
-        fakeFile(base, Collections.singletonList(tile), lane, extension);
+        fakeFile(base, new int[] {tile}, lane, extension);
     }
 
-    public void fakeFile(final File base, final List<Integer> expectedTiles, final int lane, final String extension)
+    public void fakeFile(final File base, final int[] expectedTiles, final int lane, final String extension)
             throws IOException {
         if (base.exists() || base.mkdirs()) {
             this.tiles = expectedTiles;
             final File fakeFile;
-            if (expectedTiles.size() == 1) {
-                String longTileName = String.valueOf(tiles.get(0));
+            if (expectedTiles.length == 1) {
+                StringBuilder longTileName = new StringBuilder(String.valueOf(tiles[0]));
                 if (addLeadingZeros()) {
                     while (longTileName.length() < 4) {
-                        longTileName = "0" + longTileName;
+                        longTileName.insert(0, "0");
                     }
                 }
-                fakeFile = new File(base, String.format("s_%d_%s%s", lane, longTileName, extension));
+                fakeFile = new File(base, String.format("s_%d_%s%s", lane, longTileName.toString(), extension));
             } else {
                 fakeFile = new File(base, String.format("s_%s%s", lane, extension));
             }
-
             fakeFile(fakeFile, bufferSize());
         }
-
     }
 
     public void fakeFile(final File cycleFile, Integer size) throws IOException {

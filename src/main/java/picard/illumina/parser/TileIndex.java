@@ -98,13 +98,15 @@ public class TileIndex implements Iterable<TileIndex.TileIndexRecord> {
         return true;
     }
 
-    public List<Integer> getTiles() {
-        final List<Integer> ret = new ArrayList<Integer>(tiles.size());
-        for (final TileIndexRecord rec : tiles) ret.add(rec.tile);
+    public int[]  getTiles() {
+        final int[] ret = new int[tiles.size()];
+        for(int i = 0; i < tiles.size(); i++) {
+            ret[i] = tiles.get(i).tile;
+        }
         return ret;
     }
 
-    public List<String> verify(final List<Integer> expectedTiles) {
+    public List<String> verify(final int[] expectedTiles) {
         final Set<Integer> tileSet = new HashSet<Integer>(tiles.size());
         for (final TileIndexRecord rec : tiles) tileSet.add(rec.tile);
         final List<String> failures = new LinkedList<String>();

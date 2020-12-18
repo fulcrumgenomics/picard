@@ -35,7 +35,7 @@ import java.util.TreeMap;
 class IlluminaFileMap extends TreeMap<Integer, File> {
 
     /** Return a file map that includes only the tiles listed */
-    public IlluminaFileMap keep(final List<Integer> tilesToKeep) {
+    public IlluminaFileMap keep(final int[] tilesToKeep) {
         final IlluminaFileMap fileMap = new IlluminaFileMap();
         for(final Integer tile : tilesToKeep) {
             final File file = this.get(tile);

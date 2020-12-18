@@ -4,10 +4,9 @@ import picard.illumina.parser.fakers.FileFaker;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class PerTileFileUtil extends ParameterizedFileUtil {
     final IlluminaFileMap fileMap;
@@ -22,9 +21,14 @@ public class PerTileFileUtil extends ParameterizedFileUtil {
         super(true, extension, base, faker, lane, skipEmptyFiles);
         this.fileMap = getTiledFiles(base, matchPattern);
         if (!fileMap.isEmpty()) {
-            this.tiles = new ArrayList<>(this.fileMap.keySet());
+            this.tiles = new int[this.fileMap.keySet().size()];
+            int i = 0;
+            for(int tile: this.fileMap.keySet()) {
+                this.tiles[i] = tile;
+                i++;
+            }
         } else {
-            this.tiles = Collections.emptyList();
+            this.tiles = new int[0];
         }
     }
 
@@ -37,38 +41,38 @@ public class PerTileFileUtil extends ParameterizedFileUtil {
         return fileMap;
     }
 
-    public IlluminaFileMap getFiles(final List<Integer> tiles) {
+    public IlluminaFileMap getFiles(final int[]  tiles) {
         return fileMap.keep(tiles);
     }
 
     @Override
-    public List<String> verify(final List<Integer> expectedTiles, final int[] expectedCycles) {
+    public List<String> verify(final int[]  expectedTiles, final int[] expectedCycles) {
         return verifyPerTile(this.base, expectedTiles);
     }
 
-    List<String> verifyPerTile(File baseDir, List<Integer> expectedTiles) {
+    List<String> verifyPerTile(File baseDir, int[]  expectedTiles) {
         final List<String> failures = new LinkedList<>();
         if (!baseDir.exists()) {
             failures.add("Base directory(" + baseDir.getAbsolutePath() + ") does not exist!");
         } else {
-            if (!tiles.containsAll(expectedTiles)) {
-                final List<Integer> missing = new ArrayList<>(expectedTiles);
-                missing.removeAll(tiles);
-                failures.add("Missing tile " + missing + " for file type " + extension + ".");
+            Set<Integer> expectedSet = IntStream.of(expectedTiles).boxed().collect(Collectors.toCollection(HashSet::new));
+            int[] missing = IntStream.of(tiles).filter(val -> !expectedSet.contains(val)).toArray();
+            if(missing.length > 0){
+                failures.add("Missing tile " + Arrays.toString(missing) + " for file type " + extension + ".");
             }
         }
         return failures;
     }
 
     @Override
-    public List<String> fakeFiles(final List<Integer> expectedTiles, final int[] cycles,
+    public List<String> fakeFiles(int[] expectedTiles, final int[] cycles,
                                   final IlluminaFileUtil.SupportedIlluminaFormat format) {
         final List<String> failures = new LinkedList<>();
         if (!base.exists()) {
             failures.add("Base directory(" + base.getAbsolutePath() + ") does not exist!");
         } else {
             for (final Integer tile : expectedTiles) {
-                if (!tiles.contains(tile) || fileMap.get(tile).length() == 0) {
+                if (Arrays.stream(tiles).noneMatch(query ->query == tile) || fileMap.get(tile).length() == 0) {
                     //create a new file of this type
                     try {
                         faker.fakeFile(base, tile, lane, extension);

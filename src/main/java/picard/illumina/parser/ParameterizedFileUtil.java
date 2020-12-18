@@ -25,7 +25,7 @@ public abstract class ParameterizedFileUtil {
 
     protected final int lane;
 
-    protected List<Integer> tiles;
+    protected int[] tiles;
     /**
      * If you think of the file system as a tree, this is the deepest directory(node) on the tree that
      * still contains all of the files for this given type (e.g. If we're talking about BCLs the directory
@@ -95,7 +95,7 @@ public abstract class ParameterizedFileUtil {
      *
      * @return A List of tile integers
      */
-    public List<Integer> getTiles() {
+    public int[] getTiles() {
         return tiles;
     }
 
@@ -107,7 +107,7 @@ public abstract class ParameterizedFileUtil {
      * @param expectedCycles An ordered list of cycle numbers that may contain gaps
      * @return A list of error messages for this format
      */
-    public abstract List<String> verify(List<Integer> expectedTiles, int[] expectedCycles);
+    public abstract List<String> verify(int[]  expectedTiles, int[] expectedCycles);
 
     /**
      * Given the expected tiles/expected cycles for this file type create a set of fake files such that the
@@ -118,7 +118,7 @@ public abstract class ParameterizedFileUtil {
      * @param format        The format of the files that are to be faked
      * @return A list of error messages for this format
      */
-    public abstract List<String> fakeFiles(List<Integer> expectedTiles, int[] cycles,
+    public abstract List<String> fakeFiles(int[] expectedTiles, int[] cycles,
                                            IlluminaFileUtil.SupportedIlluminaFormat format);
 
     /**
@@ -197,11 +197,11 @@ public abstract class ParameterizedFileUtil {
         return fileMap;
     }
 
-    public void setTiles(List<Integer> tiles) {
+    public void setTiles(int[] tiles) {
         this.tiles = tiles;
     }
 
-    public void setTilesForPerRunFile(List<Integer> tiles) {
+    public void setTilesForPerRunFile(int[] tiles) {
     }
 
     public boolean checkTileCount() {

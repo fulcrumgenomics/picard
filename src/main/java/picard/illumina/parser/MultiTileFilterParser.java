@@ -36,7 +36,7 @@ import java.util.List;
 public class MultiTileFilterParser extends MultiTileParser<PfData> {
     private final FilterFileReader reader;
 
-    public MultiTileFilterParser(final TileIndex tileIndex, final List<Integer> requestedTiles, final File filterFile) {
+    public MultiTileFilterParser(final TileIndex tileIndex, final int[] requestedTiles, final File filterFile) {
         super(tileIndex, requestedTiles, Collections.singleton(IlluminaDataType.PF));
         reader = new FilterFileReader(filterFile);
     }

@@ -28,9 +28,9 @@ import htsjdk.samtools.util.StringUtil;
 import picard.PicardException;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /** Abstract base class for Parsers that open a single tile file at a time and iterate through them. */
 public abstract class PerTileParser<ILLUMINA_DATA extends IlluminaData> implements IlluminaParser<ILLUMINA_DATA>  {
@@ -129,13 +129,14 @@ public abstract class PerTileParser<ILLUMINA_DATA extends IlluminaData> implemen
         }
     }
 
-    public void verifyData(List<Integer> tiles, final int [] cycles) {
-        final List<Integer> mapTiles = new ArrayList<Integer>(this.tileToFiles.keySet());
-        if(!mapTiles.containsAll(tiles)) {
+    public void verifyData(int[] tiles, final int [] cycles) {
+        Set<Integer> mapTiles = new HashSet<>(this.tileToFiles.keySet());
+        int[] missing = IntStream.of(tiles).filter(val -> !mapTiles.contains(val)).toArray();
+        if(missing.length > 0) {
             throw new PicardException("Missing tiles in PerTileParser expected(" + StringUtil.join(",", tiles) + ") but found (" + StringUtil.join(",", mapTiles) + ")");
         }
 
-        if(!tiles.containsAll(mapTiles)) {
+        if(tiles.length > mapTiles.size()) {
             throw new PicardException("Extra tiles where found in PerTileParser  expected(" + StringUtil.join(",", tiles) + ") but found (" + StringUtil.join(",", mapTiles) + ")");
         }
     }

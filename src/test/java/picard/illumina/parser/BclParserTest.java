@@ -123,21 +123,15 @@ public class BclParserTest {
         final PerTilePerCycleFileUtil bclFileUtil = (PerTilePerCycleFileUtil) util.getUtil(IlluminaFileUtil.SupportedIlluminaFormat.Bcl);
         final MultiTileBclFileUtil multiTileBclFileUtil = (MultiTileBclFileUtil) util.getUtil(IlluminaFileUtil.SupportedIlluminaFormat.MultiTileBcl);
 
-
-        final List<Integer> tileIntegers = new ArrayList<Integer>();
-        for (final int tile : tiles) {
-            tileIntegers.add(tile);
-        }
-
         final BclParser bclParser;
         if(multiTile){
             final File bci = new File(MULTI_TILE_DATA_DIR, "s_" + LANE + ".bci");
-            bclParser = new MultiTileBclParser(dir, LANE, multiTileBclFileUtil.getFiles(tileIntegers, outputMapping.getOutputCycles()),
+            bclParser = new MultiTileBclParser(dir, LANE, multiTileBclFileUtil.getFiles(tiles, outputMapping.getOutputCycles()),
                     outputMapping, true, new BclQualityEvaluationStrategy(BclQualityEvaluationStrategy.ILLUMINA_ALLEGED_MINIMUM_QUALITY),
                     new TileIndex(bci));
         }
         else{
-            bclParser = new BclParser(dir, LANE, bclFileUtil.getFiles(tileIntegers, outputMapping.getOutputCycles()),
+            bclParser = new BclParser(dir, LANE, bclFileUtil.getPerTilePerCycleFiles(tiles, outputMapping.getOutputCycles()),
                     outputMapping, new BclQualityEvaluationStrategy(BclQualityEvaluationStrategy.ILLUMINA_ALLEGED_MINIMUM_QUALITY));
         }
 

@@ -37,7 +37,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static picard.illumina.BasecallsConverter.TILE_NUMBER_COMPARATOR;
 import static picard.illumina.BasecallsConverter.getTiledFiles;
 import static picard.illumina.parser.BaseIlluminaDataProvider.fileToTile;
 
@@ -155,7 +154,7 @@ public class CheckIlluminaDirectory extends CommandLineProgram {
                     }
                 }
                 IOUtil.assertFilesAreReadable(Arrays.asList(filterFiles));
-                tiles.sort(TILE_NUMBER_COMPARATOR);
+                tiles.sort(IlluminaFileUtil.TILE_NUMBER_COMPARATOR);
 
                 //check s.locs
                 final File locsFile = new File(BASECALLS_DIR.getParentFile(), AbstractIlluminaPositionFileReader.S_LOCS_FILE);
@@ -200,9 +199,9 @@ public class CheckIlluminaDirectory extends CommandLineProgram {
                 }
             } else {
                 IlluminaFileUtil fileUtil = new IlluminaFileUtil(BASECALLS_DIR, lane);
-                final List<Integer> expectedTiles = fileUtil.getExpectedTiles();
+                int[] expectedTiles = fileUtil.getExpectedTiles();
                 if (!TILE_NUMBERS.isEmpty()) {
-                    expectedTiles.retainAll(TILE_NUMBERS);
+                    expectedTiles = Arrays.stream(expectedTiles).filter( tile -> TILE_NUMBERS.contains(tile)).toArray();
                 }
 
                 if (LINK_LOCS) {
@@ -283,10 +282,10 @@ public class CheckIlluminaDirectory extends CommandLineProgram {
      * @param dataTypes     The data types we expect to be available/well-formed
      * @return The number of errors found/logged for this directory/lane
      */
-    private static int verifyLane(final IlluminaFileUtil fileUtil, final List<Integer> expectedTiles,
+    private static int verifyLane(final IlluminaFileUtil fileUtil, final int[] expectedTiles,
                                   final int[] cycles,
                                   final Set<IlluminaDataType> dataTypes, final boolean fakeFiles) {
-        if (expectedTiles.isEmpty()) {
+        if (expectedTiles.length == 0) {
             throw new PicardException(
                     "0 input tiles were specified!  Check to make sure this lane is in the InterOp file!");
         }

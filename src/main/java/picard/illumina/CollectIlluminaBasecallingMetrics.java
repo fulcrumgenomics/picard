@@ -208,7 +208,7 @@ public class CollectIlluminaBasecallingMetrics extends CommandLineProgram {
             }
         }
 
-        factory.getAvailableTiles().forEach(tile -> {
+        Arrays.stream(factory.getAvailableTiles()).forEach(tile -> {
             final File barcodeFile = barcodesFiles.get(tile);
             final BaseIlluminaDataProvider provider = factory.makeDataProvider(tile, barcodeFile);
             while (provider.hasNext()) {

@@ -270,7 +270,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         LOG.info("Processing with " + numProcessors + " PerTileBarcodeExtractor(s).");
         final ThreadPoolExecutor pool = new ThreadPoolExecutorWithExceptions(numProcessors);
 
-        final List<PerTileBarcodeExtractor> extractors = new ArrayList<>(factory.getAvailableTiles().size());
+        final List<PerTileBarcodeExtractor> extractors = new ArrayList<>(factory.getAvailableTiles().length);
         // TODO: This is terribly inefficient; we're opening a huge number of files via the extractor constructor and we never close them.
         for (final int tile : factory.getAvailableTiles()) {
             final PerTileBarcodeExtractor extractor = new PerTileBarcodeExtractor(

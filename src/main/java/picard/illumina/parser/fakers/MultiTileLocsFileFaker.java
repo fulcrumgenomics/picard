@@ -12,7 +12,7 @@ public class MultiTileLocsFileFaker extends FileFaker {
         buffer.putInt(1);
         buffer.putFloat(1.0f);
         buffer.putInt(1);
-        for (int count = 0; count < tiles.size(); count++) {
+        for (int count = 0; count < tiles.length; count++) {
             buffer.putFloat(5.0f + (count * 0.5f));
             buffer.putFloat(5.0f + (count * 0.5f));
         }
@@ -25,6 +25,6 @@ public class MultiTileLocsFileFaker extends FileFaker {
 
     @Override
     protected int bufferSize() {
-        return (Integer.SIZE * 2) + (Float.SIZE * tiles.size()) + Float.SIZE;
+        return (Integer.SIZE * 2) + (Float.SIZE * tiles.length) + Float.SIZE;
     }
 }
