@@ -190,11 +190,9 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
 
         //  Thread by surface tile
         final ThreadPoolExecutorWithExceptions tileProcessingExecutor = new ThreadPoolExecutorWithExceptions(numThreads);
-
         for (final Integer tile : tiles) {
             tileProcessingExecutor.submit(new TileProcessor(tile, barcodesFiles.get(tile)));
         }
-
         tileProcessingExecutor.shutdown();
 
         // Wait for all the threads to complete before checking for errors
