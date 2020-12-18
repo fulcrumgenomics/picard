@@ -294,8 +294,8 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             while (dataProvider.hasNext()) {
                 final ClusterData cluster = dataProvider.next();
                 readProgressLogger.record(null, 0);
-                final String barcode = (demultiplex ? cluster.getMatchedBarcode() : null);
                 if (cluster.isPf() || includeNonPfReads) {
+                    final String barcode = (demultiplex ? cluster.getMatchedBarcode() : null);
                     addRecord(barcode, converter.convertClusterToOutputRecord(cluster));
                 }
             }
