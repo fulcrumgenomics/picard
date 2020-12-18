@@ -240,7 +240,8 @@ public class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         private final String barcode;
 
         RecordWriter(final ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD> writer,
-                     final SortingCollection<CLUSTER_OUTPUT_RECORD> recordCollection, final String barcode) {
+                     final SortingCollection<CLUSTER_OUTPUT_RECORD> recordCollection, 
+                     final String barcode) {
             this.writer = writer;
             this.recordCollection = recordCollection;
             this.barcode = barcode;
