@@ -57,8 +57,6 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
      * @param barcodeRecordWriterMap       Map from barcode to CLUSTER_OUTPUT_RECORD writer.  If demultiplex is false, must contain
      *                                     one writer stored with key=null.
      * @param demultiplex                  If true, output is split by barcode, otherwise all are written to the same output stream.
-     * @param maxReadsInRamPerTile         Configures number of reads each tile will store in RAM before spilling to disk.
-     * @param tmpDirs                      For SortingCollection spilling.
      * @param numProcessors                Controls number of threads.  If <= 0, the number of threads allocated is
      *                                     available cores - numProcessors.
      * @param firstTile                    (For debugging) If non-null, start processing at this tile.
