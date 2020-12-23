@@ -46,8 +46,12 @@ public class BclQualityEvaluationStrategy {
     }
 
     /** The rule used to revise quality scores, which is: if it's less than 1, make it 1. */
-    private static byte generateRevisedQuality(final byte quality) { return (byte) Math.max(quality, 1); }
-    
+    //private static byte generateRevisedQuality(final byte quality) { return (byte) Math.max(quality, 1); }
+    private static final byte ONE_BYTE = (byte) 1;
+    private static byte generateRevisedQuality(final byte quality) {
+        return (quality < ONE_BYTE) ? ONE_BYTE : quality;
+    }
+
     /**
      * Accepts a quality read from a BCL file and (1) returns a 1 if the value was 0 and (2) makes a note of the provided quality if it is
      * low.  Because of (2) each record's quality should be passed only once to this method, otherwise it will be observed multiple times.
@@ -56,10 +60,10 @@ public class BclQualityEvaluationStrategy {
      * @return The revised new quality score
      */
     public byte reviseAndConditionallyLogQuality(final byte quality) {
-        final byte revisedQuality = generateRevisedQuality(quality);
-        if (quality < ILLUMINA_ALLEGED_MINIMUM_QUALITY) {
-            qualityCountMap.get(quality).incrementAndGet();
-        }
+        final byte revisedQuality = (quality < ONE_BYTE) ? ONE_BYTE : quality;
+//        if (quality == ILLUMINA_ALLEGED_MINIMUM_QUALITY) {
+//            qualityCountMap.get(quality).incrementAndGet();
+//        }
         return revisedQuality;
     }
 
@@ -73,7 +77,7 @@ public class BclQualityEvaluationStrategy {
              * We're comparing revised qualities here, not observed, but the qualities that are logged in qualityCountMap are observed
              * qualities.  So as we iterate through it, convert observed qualities into their revised value. 
              */
-            if (generateRevisedQuality(entry.getKey()) < minimumRevisedQuality) { 
+            if (generateRevisedQuality(entry.getKey()) < minimumRevisedQuality) {
                 errorTokens.add(String.format("quality %s observed %s times", entry.getKey(), entry.getValue()));
             }
         }

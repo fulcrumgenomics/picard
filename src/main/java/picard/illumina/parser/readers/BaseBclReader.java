@@ -14,13 +14,48 @@ import java.io.InputStream;
 import java.util.zip.GZIPInputStream;
 
 public class BaseBclReader {
-    private static final byte BASE_MASK = 0x0003;
-    private static final byte[] BASE_LOOKUP = new byte[]{'A', 'C', 'G', 'T'};
-    private static final byte NO_CALL_BASE = (byte) '.';
+    static final byte BASE_MASK = 0x0003;
+    static final byte[] BASE_LOOKUP = new byte[]{'A', 'C', 'G', 'T'};
+
+    static final byte[] BASE_LOOKUP2 = new byte[]{
+            'N', 'N', 'N', 'N', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T',
+            'A', 'C', 'G', 'T', 'A', 'C', 'G', 'T'
+    };
+    static final byte NO_CALL_BASE = (byte) '.';
     final InputStream[] streams;
     final File[] streamFiles;
     final int[] outputLengths;
-    private BclQualityEvaluationStrategy bclQualityEvaluationStrategy;
+    BclQualityEvaluationStrategy bclQualityEvaluationStrategy;
     final int[] numClustersPerCycle;
     final int cycles;
 
@@ -87,7 +122,6 @@ public class BaseBclReader {
             throw new PicardException("Error reading file: (" + filePath + ")", ioe);
         }
     }
-
     void decodeBasecall(final BclData bclData, final int read, final int cycle, final int byteToDecode) {
         if (byteToDecode == 0) {
             bclData.bases[read][cycle] = NO_CALL_BASE;

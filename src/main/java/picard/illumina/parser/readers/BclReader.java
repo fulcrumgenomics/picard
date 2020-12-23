@@ -73,6 +73,7 @@ import java.util.zip.GZIPInputStream;
 public class BclReader extends BaseBclReader implements CloseableIterator<BclData> {
     private static final int HEADER_SIZE = 4;
     protected BclData queue = null;
+    private int byteCache[] = new int[128];
 
     public BclReader(final List<File> bclsForOneTile, final int[] outputLengths,
                      final BclQualityEvaluationStrategy bclQualityEvaluationStrategy, final boolean seekable) {
@@ -105,6 +106,7 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
                 this.streamFiles[i] =  bclFile;
                 byteBuffer.clear();
             }
+            byteCache = new int[cycles];
         } catch (final IOException ioe) {
             throw new RuntimeIOException(ioe);
         }
@@ -224,34 +226,75 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
     }
 
     void advance() {
-        int totalCycleCount = 0;
         final BclData data = new BclData(outputLengths);
-        for (int read = 0; read < outputLengths.length; read++) {
-            for (int cycle = 0; cycle < outputLengths[read]; ++cycle) {
-                try {
 
-                    final int readByte;
-                    try {
-                        readByte = this.streams[totalCycleCount].read();
-                    } catch (IOException e) {
-                        // when logging the error, increment cycle by 1, since totalCycleCount is zero-indexed but Illumina directories are 1-indexed.
-                        throw new IOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
-                                (totalCycleCount+1), this.streamFiles[totalCycleCount].getAbsolutePath()), e);
-                    }
-
-                    if (readByte == -1) {
-                        queue = null;
-                        return;
-                    }
-
-                    decodeBasecall(data, read, cycle, readByte);
-                    totalCycleCount++;
-                } catch (final IOException ioe) {
-                    throw new RuntimeIOException(ioe);
-                }
-
+        int totalCycleCount = 0;
+        int read = 0;
+        int cycle = 0;
+        byte [] bases = data.bases[read];
+        byte [] qualities = data.qualities[read];
+        try {
+            for (totalCycleCount = 0; totalCycleCount < this.cycles; totalCycleCount++) {
+                byteCache[totalCycleCount] = this.streams[totalCycleCount].read();
             }
+
+            for (totalCycleCount = 0; totalCycleCount < this.cycles; totalCycleCount++, cycle++) {
+                if (outputLengths[read] == cycle) {
+                    cycle = 0;
+                    read++;
+                    bases = data.bases[read];
+                    qualities = data.qualities[read];
+                }
+                final int readByte = this.byteCache[totalCycleCount];
+                if (readByte > 0) {
+                    //bases[cycle] = BASE_LOOKUP[readByte & BASE_MASK];
+                    bases[cycle] = BASE_LOOKUP2[readByte];
+                    qualities[cycle] = bclQualityEvaluationStrategy.reviseAndConditionallyLogQuality((byte) (readByte >>> 2));
+                    //bases[cycle] = NO_CALL_BASE;
+                    //qualities[cycle] = BclQualityEvaluationStrategy.ILLUMINA_ALLEGED_MINIMUM_QUALITY;
+                }
+                else if (readByte == 0) {
+                    bases[cycle] = NO_CALL_BASE;
+                    qualities[cycle] = BclQualityEvaluationStrategy.ILLUMINA_ALLEGED_MINIMUM_QUALITY;
+                } else {
+                    this.queue = null;
+                    return;
+                }
+            }
+        } catch (final IOException ioe) {
+            // when logging the error, increment cycle by 1, since totalCycleCount is zero-indexed but Illumina directories are 1-indexed.
+            final IOException ex = new IOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
+                    (totalCycleCount+1), this.streamFiles[totalCycleCount].getAbsolutePath()), ioe);
+            throw new RuntimeIOException(ex);
         }
+
+//
+//        for (int read = 0; read < outputLengths.length; read++) {
+//            for (int cycle = 0; cycle < outputLengths[read]; ++cycle) {
+//                try {
+//
+//                    final int readByte;
+//                    try {
+//                        readByte = this.streams[totalCycleCount].read();
+//                    } catch (IOException e) {
+//                        // when logging the error, increment cycle by 1, since totalCycleCount is zero-indexed but Illumina directories are 1-indexed.
+//                        throw new IOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
+//                                (totalCycleCount+1), this.streamFiles[totalCycleCount].getAbsolutePath()), e);
+//                    }
+//
+//                    if (readByte == -1) {
+//                        queue = null;
+//                        return;
+//                    }
+//
+//                    decodeBasecall(data, read, cycle, readByte);
+//                    totalCycleCount++;
+//                } catch (final IOException ioe) {
+//                    throw new RuntimeIOException(ioe);
+//                }
+//
+//            }
+//        }
         this.queue = data;
     }
 

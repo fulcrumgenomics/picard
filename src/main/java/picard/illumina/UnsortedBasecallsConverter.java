@@ -85,7 +85,8 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                 readProgressLogger.record(null, 0);
                 if (cluster.isPf() || includeNonPfReads) {
                     final String barcode = (demultiplex ? cluster.getMatchedBarcode() : null);
-                    barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
+                    // FIXME
+                    //barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
                     writeProgressLogger.record(null, 0);
                 }
             }
