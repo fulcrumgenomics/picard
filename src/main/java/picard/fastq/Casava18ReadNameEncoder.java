@@ -26,7 +26,7 @@ public class Casava18ReadNameEncoder implements ReadNameEncoder {
 
     public Casava18ReadNameEncoder(final String instrumentName, final String runId, final String flowcellId) {
         this.base           = instrumentName + SEPARATOR + runId + SEPARATOR + flowcellId + SEPARATOR;
-        this.bufferSize     = this.base.length() + 24;
+        this.bufferSize     = this.base.length();
     }
 
     /** Converts an int to a string, with cached results for some ints. */
