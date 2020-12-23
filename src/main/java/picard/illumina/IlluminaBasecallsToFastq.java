@@ -364,7 +364,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
      * outputPrefix to determine the filename(s).
      */
     private FastqRecordsWriter buildWriter(final File outputPrefix) {
-        AsyncWriterPool<FastqRecord> pool = new AsyncWriterPool<>(4);
+        AsyncWriterPool pool = new AsyncWriterPool(4);
         List<AsyncWriterPool.PooledWriter<FastqRecord>> writers = new ArrayList<>();
         final File outputDir = outputPrefix.getAbsoluteFile().getParentFile();
         IOUtil.assertDirectoryIsWritable(outputDir);
@@ -376,21 +376,21 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
 
         for (int i = 0; i < readStructure.templates.length(); ++i) {
             final String filename = String.format("%s.%d.%s", prefixString,  i + 1, suffixString);
-            AsyncWriterPool.PooledWriter<FastqRecord> e = new AsyncWriterPool.PooledWriter<>(pool, fastqWriterFactory.newWriter(new File(outputDir, filename)), new LinkedBlockingQueue<>(), 15);
+            AsyncWriterPool.PooledWriter<FastqRecord> e = pool.new PooledWriter<>(fastqWriterFactory.newWriter(new File(outputDir, filename)), new LinkedBlockingQueue<>(), 100);
             writers.add(e);
             templateWriters.add(e);
         }
 
         for (int i = 0; i < readStructure.sampleBarcodes.length(); ++i) {
             final String filename = String.format("%s.barcode_%d.%s", prefixString, i + 1, suffixString);
-            AsyncWriterPool.PooledWriter<FastqRecord> e = new AsyncWriterPool.PooledWriter<>(pool, fastqWriterFactory.newWriter(new File(outputDir, filename)), new LinkedBlockingQueue<>(), 15);
+            AsyncWriterPool.PooledWriter<FastqRecord> e = pool.new PooledWriter<>(fastqWriterFactory.newWriter(new File(outputDir, filename)), new LinkedBlockingQueue<>(), 100);
             writers.add(e);
             sampleBarcodeWriters.add(e);
         }
 
         for (int i = 0; i < readStructure.molecularBarcode.length(); ++i) {
             final String filename = String.format("%s.index_%d.%s", prefixString, i + 1, suffixString);
-            AsyncWriterPool.PooledWriter<FastqRecord> e = new AsyncWriterPool.PooledWriter<>(pool, fastqWriterFactory.newWriter(new File(outputDir, filename)), new LinkedBlockingQueue<>(), 15);
+            AsyncWriterPool.PooledWriter<FastqRecord> e = pool.new PooledWriter<>(fastqWriterFactory.newWriter(new File(outputDir, filename)), new LinkedBlockingQueue<>(), 100);
             writers.add(e);
             molecularBarcodeWriters.add(e);
         }
