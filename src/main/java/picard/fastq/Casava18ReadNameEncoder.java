@@ -46,10 +46,12 @@ public class Casava18ReadNameEncoder implements ReadNameEncoder {
         builder.append(encodeInt(cluster.getX()));
         builder.append(SEPARATOR);
         builder.append(encodeInt(cluster.getY()));
-        builder.append(SEPARATOR);
+
+        builder.append(' ');
+
         if (pairNumber != null) builder.append(encodeInt(pairNumber));
         builder.append(SEPARATOR);
-        builder.append(cluster.isPf() ? 'Y' : 'N');
+        builder.append(cluster.isPf() ? 'N' : 'Y');  // encoded in read name as Y == fails filter
         builder.append(SEPARATOR);
         builder.append(CONTROL_FIELD_VALUE);
         builder.append(SEPARATOR);
