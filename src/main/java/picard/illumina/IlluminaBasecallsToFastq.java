@@ -541,11 +541,15 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
 
     /** An optimized writer for writing ClusterData directly to a set of Fastq files. */
     private final class ClusterWriter implements BasecallsConverter.ConvertedClusterDataWriter<ClusterData> {
+        private static final byte PERIOD = (byte) '.';
+        private static final byte N      = (byte) 'N';
+
         private final OutputStream[] templateOut;
         private final OutputStream[] sampleBarcodeOut;
         private final OutputStream[] molecularBarcodeOut;
         private final boolean appendTemplateNumber;
         private final boolean appendMolecularBarcodeNumber;
+        private final int numReads;
 
         public ClusterWriter(final File[] templateFiles,
                              final File[] sampleBarcodeFiles,
@@ -556,6 +560,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             this.molecularBarcodeOut = Arrays.stream(molecularBarcodeFiles).map(this::makeWriter).toArray(OutputStream[]::new);
             this.appendTemplateNumber = this.templateOut.length > 1;
             this.appendMolecularBarcodeNumber = this.molecularBarcodeOut.length > 1;
+            this.numReads = templateOut.length + sampleBarcodeOut.length + molecularBarcodeOut.length;
         }
 
         private OutputStream makeWriter(final File file) {
@@ -565,12 +570,12 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         }
 
         @Override
-        public void write(ClusterData rec) {
+        public void write(final ClusterData rec) {
             int templateIndex = 0;
             int sampleBarcodeIndex = 0;
             int molecularBarcodeIndex = 0;
 
-            for (int i=0; i<rec.getNumReads(); ++i) {
+            for (int i=0; i<this.numReads; ++i) {
                 final ReadData read = rec.getRead(i);
                 final OutputStream out;
                 final String name;
@@ -592,21 +597,33 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                         throw new IllegalStateException("Read type other than T/B/M encountered.");
                 }
 
-                try {
-                    out.write('@');
-                    out.write(name.getBytes(StandardCharsets.UTF_8));
-                    out.write('\n');
-                    for (final byte b : read.getBases()) out.write(b == '.' ? 'N' : b);
-                    out.write('\n');
-                    out.write('+');
-                    out.write('\n');
-                    for (final byte b : read.getQualities()) out.write((byte) SAMUtils.phredToFastq(b));
-                    out.write('\n');
-                    out.flush();
+                writeSingle(out, name, read);
+            }
+        }
+
+        /** Writes out a single read to a single FASTQ's output stream. */
+        private void writeSingle(final OutputStream out, final String name, final ReadData read) {
+            try {
+                final byte[] bases = read.getBases();
+                final byte[] quals = read.getQualities();
+                final int len = bases.length;
+                for (int i=0; i<len; ++i) {
+                    if (bases[i] == PERIOD) bases[i] = N;
+                    quals[i] = (byte) (quals[i] + 33);
                 }
-                catch (IOException ioe) {
-                    throw new RuntimeIOException(ioe);
-                }
+
+                out.write('@');
+                out.write(name.getBytes(StandardCharsets.UTF_8));
+                out.write('\n');
+                out.write(bases);
+                out.write('\n');
+                out.write('+');
+                out.write('\n');
+                out.write(quals);
+                out.write('\n');
+            }
+            catch (IOException ioe) {
+                throw new RuntimeIOException(ioe);
             }
         }
 
