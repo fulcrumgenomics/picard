@@ -224,6 +224,8 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
     }
 
     void advance() {
+        int totalCycleCount = 0;
+
         try {
             // See how many clusters we can read and then make BclData objects for them
             final int clustersRead   = this.streams[0].read(buffer);
@@ -233,8 +235,6 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
             for (int i=0; i<clustersRead; ++i) {
                 bclDatas[i] = new BclData(outputLengths);
             }
-
-            int totalCycleCount = 0;
 
             for (int read = 0; read < numReads; ++read) {
                 final int readLen = this.outputLengths[read];
@@ -249,7 +249,7 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
                     for (int dataIdx=0; dataIdx<clustersRead; ++dataIdx) {
                         final BclData data = bclDatas[dataIdx];
                         final int b = Byte.toUnsignedInt(buffer[dataIdx]);
-                        decodeBasecall(data.bases[read], data.qualities[read], cycle, b);
+                        decodeBasecall(data, read, cycle, b);
                     }
                 }
             }
@@ -257,9 +257,8 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
             for (final BclData data : bclDatas) this.queue.add(data);
         }
         catch (final IOException ioe) {
-//            throw new RuntimeIOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
-//                                    (totalCycleCount), this.streamFiles[totalCycleCount].getAbsolutePath()), ioe);
-            throw new RuntimeIOException(ioe);
+            throw new RuntimeIOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
+                                    (totalCycleCount), this.streamFiles[totalCycleCount].getAbsolutePath()), ioe);
         }
     }
 
