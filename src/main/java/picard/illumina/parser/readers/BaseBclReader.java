@@ -16,7 +16,7 @@ import java.util.zip.GZIPInputStream;
 public class BaseBclReader {
     private static final byte BASE_MASK = 0x0003;
     private static final byte[] BASE_LOOKUP = new byte[]{'A', 'C', 'G', 'T'};
-    public static final byte NO_CALL_BASE = (byte) '.';
+    public static final byte NO_CALL_BASE = (byte) 'N';
     final InputStream[] streams;
     final File[] streamFiles;
     final int[] outputLengths;
