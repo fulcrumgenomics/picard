@@ -213,7 +213,9 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
     private IlluminaDataProviderFactory factory;
 
     private final Map<String, BarcodeMetric> barcodeToMetrics = new LinkedHashMap<>();
-    private final ConcurrentHashMap<String, PerTileBarcodeExtractor.BarcodeMatch> barcodeLookupMap = new ConcurrentHashMap<>();
+
+    private final static int MAX_LOOKUP_SIZE = 100000;
+    private final ConcurrentHashMap<ByteString, PerTileBarcodeExtractor.BarcodeMatch> barcodeLookupMap = new ConcurrentHashMap<>(MAX_LOOKUP_SIZE);
 
     private final NumberFormat tileNumberFormatter = NumberFormat.getNumberInstance();
     private BclQualityEvaluationStrategy bclQualityEvaluationStrategy;
@@ -281,6 +283,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         ThreadPoolExecutorUtil.awaitThreadPoolTermination("Per tile extractor executor", pool, Duration.ofMinutes(5));
 
         LOG.info("Processed " + extractors.size() + " tiles.");
+        LOG.info("Cache grew to " + this.barcodeLookupMap.size() + " entries.");
         for (final PerTileBarcodeExtractor extractor : extractors) {
             for (final String key : barcodeToMetrics.keySet()) {
                 barcodeToMetrics.get(key).merge(extractor.getMetrics().get(key));
@@ -594,6 +597,51 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
     }
 
     /**
+     * Class to give a byte[][] a hashcode and equals without copying the whole contents into a String.
+     */
+    private static final class ByteString {
+        private final byte[][] bytes;
+        private final int hash;
+
+        public ByteString(byte[][] bytes) {
+            this.bytes = new byte[bytes.length][];
+            System.arraycopy(bytes, 0, this.bytes, 0, bytes.length);
+
+            // Pre-compute the hash-code
+            int h = 0;
+            for (final byte[] bs : this.bytes) {
+                for (int i=0; i<bs.length; ++i) {
+                    h = 31 * h + bs[i];
+                }
+            }
+
+            this.hash = h;
+
+        }
+
+        @Override
+        public final int hashCode() {
+            return this.hash;
+        }
+
+        @Override
+        public boolean equals(final Object obj) {
+            try {
+                final ByteString that = (ByteString) obj;
+                if (this.hash != that.hash) return false;
+                if (this.bytes.length != that.bytes.length) return false;
+                for (int i=0; i<this.bytes.length; ++i) {
+                    if (!Arrays.equals(this.bytes[i], that.bytes[i])) return false;
+                }
+                return true;
+            }
+            catch (final Exception e) {
+                return false;
+            }
+        }
+    }
+
+    /**
      * Extracts barcodes and accumulates metrics for an entire tile.
      */
     public static class PerTileBarcodeExtractor implements Runnable {
@@ -611,14 +659,13 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         private File[] filterFiles = null;
         private IlluminaDataProviderFactory factory = null;
         private final DistanceMetric distanceMode;
-        private final ConcurrentHashMap<String, BarcodeMatch> barcodeLookupMap;
-        private final static int maxLookupSize = 100000;
+        private final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap;
 
         public PerTileBarcodeExtractor(
                 final int tile,
                 final File barcodeFile,
                 final Map<String, BarcodeMetric> barcodeToMetrics,
-                final ConcurrentHashMap<String, BarcodeMatch> barcodeLookupMap,
+                final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap,
                 final BarcodeMetric noMatchMetric,
                 final IlluminaDataProviderFactory factory,
                 final int minimumBaseQuality,
@@ -680,7 +727,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                 final int tile,
                 final File barcodeFile,
                 final Map<String, BarcodeMetric> barcodeToMetrics,
-                final ConcurrentHashMap<String, BarcodeMatch> barcodeLookupMap,
+                final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap,
                 final BarcodeMetric noMatchMetric,
                 final IlluminaDataProviderFactory factory,
                 final int minimumBaseQuality,
@@ -762,8 +809,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                     for (final byte[] bc : barcodeSubsequences) {
                         writer.write(StringUtil.bytesToString(bc));
                     }
-                    writer.write("\t" + yOrN + "\t" + match.barcode + "\t" + String.valueOf(match.mismatches) +
-                            "\t" + String.valueOf(match.mismatchesToSecondBest));
+                    writer.write("\t" + yOrN + "\t" + match.barcode + "\t" + match.mismatches + "\t" + match.mismatchesToSecondBest);
                     writer.newLine();
                 }
                 writer.close();
@@ -776,16 +822,21 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
             }
         }
 
-        private static boolean ensureLookupMinimumValue(final byte[][] qualityScores, final int minimumBaseQuality) {
-            if (qualityScores != null) {
-                for (final byte[] qs : qualityScores) {
-                    for (final byte q : qs) {
-                        if (q < minimumBaseQuality) {
-                            return false;
-                        }
+        /**
+         * Checks to ensure that all quality values are greater that the given cutoff such that comparisons can
+         * be done just using the bases without further reference to quality scores.
+         */
+        private static boolean areAllQualitiesAboveMinimum(final byte[][] qualityScores, final int minimumBaseQuality) {
+            if (qualityScores == null) return true;
+
+            for (final byte[] qs : qualityScores) {
+                for (final byte q : qs) {
+                    if (q < minimumBaseQuality) {
+                        return false;
                     }
                 }
             }
+
             return true;
         }
 
@@ -803,32 +854,22 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
          * @return perfect barcode string, if there was a match within tolerance, or null if not.
          */
         private BarcodeMatch findBestBarcode(final byte[][] readSubsequences,
-                                            final byte[][] qualityScores,
-                                            final Map<String, BarcodeMetric> metrics,
-                                            final int maxNoCalls,
-                                            final int maxMismatches,
-                                            final int minMismatchDelta,
-                                            final int minimumBaseQuality) {
-            final boolean canUseLookupTable = ensureLookupMinimumValue(qualityScores, minimumBaseQuality);
-            final BarcodeMatch match;
-            final String barcodesAsString = IlluminaUtil.barcodeSeqsToString(readSubsequences);
+                                             final byte[][] qualityScores,
+                                             final Map<String, BarcodeMetric> metrics,
+                                             final int maxNoCalls,
+                                             final int maxMismatches,
+                                             final int minMismatchDelta,
+                                             final int minimumBaseQuality) {
+            final boolean canUseLookupTable = areAllQualitiesAboveMinimum(qualityScores, minimumBaseQuality);
+            final ByteString barcodesAsString = new ByteString(readSubsequences);
+            BarcodeMatch match = null;
 
-            // this implementation is optimized for barcodeLookupMap being a ConcurrentHashMap for which this
-            // pattern is faster than using computeIfAbsent (or rather, it locks the map
-            // for a shorter time, allowing other threads to access it).
-
-            // Also, a ConcurrentHashMap was used rather than a Cache since a high-performance, thread-safe
-            // Cache was not found, hence the "poor man's cache" of using the first maxLookupSize distinct
-            // barcode reads.
-
-            if (canUseLookupTable && barcodeLookupMap.containsKey(barcodesAsString)) {
-                match = barcodeLookupMap.get(barcodesAsString);
-            } else {
+            if (canUseLookupTable) match = barcodeLookupMap.get(barcodesAsString);
+            if (match == null) {
                 match = calculateBarcodeMatch(readSubsequences, qualityScores, metrics, maxNoCalls,
-                        maxMismatches, minMismatchDelta,
-                        minimumBaseQuality, distanceMode);
+                        maxMismatches, minMismatchDelta, minimumBaseQuality, distanceMode);
 
-                if (canUseLookupTable && barcodeLookupMap.size() < maxLookupSize) {
+                if (canUseLookupTable && barcodeLookupMap.size() < MAX_LOOKUP_SIZE) {
                     barcodeLookupMap.put(barcodesAsString, match);
                 }
             }
@@ -839,8 +880,10 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         static BarcodeMatch calculateBarcodeMatch(final byte[][] readSubsequences,
                                                   final byte[][] qualityScores,
                                                   final Map<String, BarcodeMetric> metrics,
-                                                  final int maxNoCalls, final int maxMismatches,
-                                                  final int minMismatchDelta, final int minimumBaseQuality,
+                                                  final int maxNoCalls,
+                                                  final int maxMismatches,
+                                                  final int minMismatchDelta,
+                                                  final int minimumBaseQuality,
                                                   final DistanceMetric distanceMode) {
             final BarcodeMatch match;
             BarcodeMetric bestBarcodeMetric = null;
