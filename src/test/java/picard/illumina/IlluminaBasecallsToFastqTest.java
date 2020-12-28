@@ -29,7 +29,6 @@ import htsjdk.samtools.util.BufferedLineReader;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.LineReader;
 import htsjdk.samtools.util.StringUtil;
-import htsjdk.samtools.util.TestUtil;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import picard.cmdline.CommandLineProgramTest;
@@ -196,7 +195,7 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
             final List<File> outputPrefixes = new ArrayList<File>();
             convertParamsFile(libraryParamsFile, concatNColumnFields, testDataDir, outputDir, libraryParams, outputPrefixes);
 
-            for (final boolean sort : new boolean[]{true, false}) {
+            for (final boolean sort : new boolean[]{false, true}) {
                 runPicardCommandLine(new String[]{
                         "BASECALLS_DIR=" + baseCallsDir,
                         "LANE=" + lane,
