@@ -610,7 +610,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
             // Pre-compute the hash-code
             int h = 0;
             for (final byte[] bs : this.bytes) {
-                for (byte b : bs) {
+                for (final byte b : bs) {
                     h = 31 * h + b;
                 }
             }
@@ -826,9 +826,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                                              final int minimumBaseQuality) {
             final boolean canUseLookupTable = areAllQualitiesAboveMinimum(qualityScores, minimumBaseQuality);
             final ByteString barcodesAsString = new ByteString(readSubsequences);
-            BarcodeMatch match = null;
-
-            if (canUseLookupTable) match = barcodeLookupMap.get(barcodesAsString);
+BarcodeMatch match = canUseLookupTable ? barcodeLookupMap.get(barcodesAsString) : null;
             if (match == null) {
                 match = calculateBarcodeMatch(readSubsequences, qualityScores, barcodesBytes, maxNoCalls,
                         maxMismatches, minMismatchDelta, minimumBaseQuality, distanceMode);
