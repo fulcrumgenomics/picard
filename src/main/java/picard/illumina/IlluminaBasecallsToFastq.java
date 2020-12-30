@@ -386,7 +386,8 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             molecularBarcodeFiles[i] = new File(outputDir, String.format("%s.index_%d.%s", prefixString, i + 1, suffixString));
         }
 
-        return new AsyncClusterWriter(new ClusterWriter(templateFiles, sampleBarcodeFiles, molecularBarcodeFiles), 20000);
+
+        return new AsyncClusterWriter(new ClusterWriter(templateFiles, sampleBarcodeFiles, molecularBarcodeFiles), 8192);
     }
 
     /**
@@ -415,6 +416,9 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
      * An optimized writer for writing ClusterData directly to a set of Fastq files.
      */
     private final class ClusterWriter implements BasecallsConverter.ConvertedClusterDataWriter<ClusterData> {
+        public static final char NEW_LINE = '\n';
+        public static final char AT_SYMBOL = '@';
+        public static final char PLUS = '+';
         private final OutputStream[] templateOut;
         private final OutputStream[] sampleBarcodeOut;
         private final OutputStream[] molecularBarcodeOut;
@@ -484,15 +488,15 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                     quals[i] = (byte) (quals[i] + 33);
                 }
 
-                out.write('@');
+                out.write(AT_SYMBOL);
                 out.write(name.getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
+                out.write(NEW_LINE);
                 out.write(bases);
-                out.write('\n');
-                out.write('+');
-                out.write('\n');
+                out.write(NEW_LINE);
+                out.write(PLUS);
+                out.write(NEW_LINE);
                 out.write(quals);
-                out.write('\n');
+                out.write(NEW_LINE);
             } catch (IOException ioe) {
                 throw new RuntimeIOException(ioe);
             }

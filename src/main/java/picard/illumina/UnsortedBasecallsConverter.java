@@ -31,13 +31,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     private static final Log log = Log.getInstance(UnsortedBasecallsConverter.class);
-    public static final int MAX_TILES_IN_CACHE = 4;
     private final ProgressLogger readProgressLogger = new ProgressLogger(log, 1000000, "Read");
     private final ProgressLogger writeProgressLogger = new ProgressLogger(log, 1000000, "Write");
     private final Map<Integer, Queue<ClusterData>> tileReadCache = new ConcurrentHashMap<>();
-    final ThreadPoolExecutorWithExceptions tileWriteExecutor = new ThreadPoolExecutorWithExceptions(1);
     private boolean tileProcessingComplete = false;
     private boolean tileProcessingError = false;
+    private int tilesProcessing = 0;
 
     /**
      * Constructs a new BasecallsConverter object.
@@ -94,13 +93,15 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
         completedWorkExecutor.submit(workChecker);
         completedWorkExecutor.shutdown();
 
-        final ThreadPoolExecutorWithExceptions tileReadExecutor = new ThreadPoolExecutorWithExceptions(4);
+        final ThreadPoolExecutorWithExceptions tileReadExecutor = new ThreadPoolExecutorWithExceptions(numThreads);
+        int MAX_TILES_IN_CACHE = 8;
 
         int tilesSubmitted = 0;
         while( tilesSubmitted < tiles.size()){
-            if(tileReadCache.size() < MAX_TILES_IN_CACHE) {
+            if(tilesProcessing < MAX_TILES_IN_CACHE) {
                 int tile = tiles.get(tilesSubmitted);
                 tileReadExecutor.submit(new TileReadProcessor(tile));
+                tilesProcessing++;
                 tilesSubmitted++;
             } else {
                 try {
@@ -128,38 +129,8 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             throw new PicardException("Exceptions in tile processing. There were " + tasksStillRunning
                     + " tasks were still running or queued and have been cancelled.");
         }
-        ThreadPoolExecutorUtil.awaitThreadPoolTermination("Tile write executor", tileWriteExecutor, Duration.ofMinutes(5));
 
-        if (tileWriteExecutor.hasError()) {
-            int tasksStillRunning = tileWriteExecutor.shutdownNow().size();
-            throw new PicardException("Exceptions in tile processing. There were " + tasksStillRunning
-                    + " tasks were still running or queued and have been cancelled.");
-        }
         barcodeRecordWriterMap.values().forEach(ConvertedClusterDataWriter::close);
-    }
-
-    /**
-     * RecordToWriterPump is a Runnable that takes a collection of output records and writes them using a
-     * ConvertedClusterDataWriter.
-     */
-    private class RecordToWriterPump implements Runnable {
-        private final int tileNum;
-        RecordToWriterPump(final int tileNum) {
-            this.tileNum = tileNum;
-        }
-        @Override
-        public void run() {
-            Queue<ClusterData> clusterData = tileReadCache.get(tileNum);
-            while(!clusterData.isEmpty()){
-                ClusterData cluster = clusterData.remove();
-                if (cluster.isPf() || includeNonPfReads) {
-                    final String barcode = (demultiplex ? cluster.getMatchedBarcode() : null);
-                    barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
-                    writeProgressLogger.record(null, 0);
-                }
-            }
-            tileReadCache.remove(tileNum);
-        }
     }
 
     /**
@@ -175,9 +146,7 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
 
         TileReadProcessor(final int tileNum) {
             this.tileNum = tileNum;
-
         }
-
         @Override
         public void run() {
             tileReadCache.put(tileNum, new ArrayDeque<>());
@@ -232,11 +201,20 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                     final Integer currentTile = tiles.get(currentTileIndex);
                     if (tileReadCache.containsKey(currentTile)) {
                         log.debug("Writing out tile. Tile: " + currentTile);
-                        tileWriteExecutor.submit(new RecordToWriterPump(currentTile));
+                        Queue<ClusterData> clusterData = tileReadCache.get(currentTile);
+                        while(!clusterData.isEmpty()){
+                            ClusterData cluster = clusterData.remove();
+                            if (cluster.isPf() || includeNonPfReads) {
+                                final String barcode = (demultiplex ? cluster.getMatchedBarcode() : null);
+                                barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
+                                writeProgressLogger.record(null, 0);
+                            }
+                        }
+                        tileReadCache.remove(currentTile);
                         currentTileIndex++;
+                        tilesProcessing--;
                     }
                 }
-                tileWriteExecutor.shutdown();
             }
         }
     }
