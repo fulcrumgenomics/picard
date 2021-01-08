@@ -417,8 +417,13 @@ public class ExtractIlluminaBarcodesTest extends CommandLineProgramTest {
         final byte[][] reads     = new byte[][]{barcodeRead[0].getBytes(), barcodeRead[1].getBytes()};
         final byte[][] qualities = new byte[][]{barcodeQuality[0].getBytes(), barcodeQuality[1].getBytes()};
 
+        List<byte[][]> barcodesBytes = new ArrayList<>(barcodeMetrics.size());
+        for (final ExtractIlluminaBarcodes.BarcodeMetric metric : barcodeMetrics.values()) {
+            barcodesBytes.add(metric.barcodeBytes);
+        }
+
         final BarcodeMatch match = ExtractIlluminaBarcodes.PerTileBarcodeExtractor.calculateBarcodeMatch(reads, qualities,
-                barcodeMetrics, 2, 2, 2, 20,
+                barcodesBytes, 2, 2, 2, 20,
                 DistanceMetric.HAMMING);
 
         Assert.assertEquals(match.mismatches,expectedMismatches);
