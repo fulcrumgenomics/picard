@@ -826,7 +826,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                                              final int minimumBaseQuality) {
             final boolean canUseLookupTable = areAllQualitiesAboveMinimum(qualityScores, minimumBaseQuality);
             final ByteString barcodesAsString = new ByteString(readSubsequences);
-BarcodeMatch match = canUseLookupTable ? barcodeLookupMap.get(barcodesAsString) : null;
+            BarcodeMatch match = canUseLookupTable ? barcodeLookupMap.get(barcodesAsString) : null;
             if (match == null) {
                 match = calculateBarcodeMatch(readSubsequences, qualityScores, barcodesBytes, maxNoCalls,
                         maxMismatches, minMismatchDelta, minimumBaseQuality, distanceMode);
