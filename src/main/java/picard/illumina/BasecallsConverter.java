@@ -4,10 +4,7 @@ import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.ProgressLogger;
 import picard.PicardException;
-import picard.illumina.parser.ClusterData;
-import picard.illumina.parser.IlluminaDataProviderFactory;
-import picard.illumina.parser.IlluminaDataType;
-import picard.illumina.parser.ReadStructure;
+import picard.illumina.parser.*;
 import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
 import picard.util.ThreadPoolExecutorUtil;
 import picard.util.ThreadPoolExecutorWithExceptions;
@@ -52,7 +49,6 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     protected final boolean ignoreUnexpectedBarcodes;
     protected final Map<String, ? extends ConvertedClusterDataWriter<CLUSTER_OUTPUT_RECORD>> barcodeRecordWriterMap;
     protected final boolean includeNonPfReads;
-    protected final int numThreads;
     protected final ProgressLogger readProgressLogger = new ProgressLogger(log, 1000000, "Read");
     protected final ProgressLogger writeProgressLogger = new ProgressLogger(log, 1000000, "Write");
     protected final Map<Integer, List<? extends Runnable>> completedWork = new HashMap<>();
@@ -60,8 +56,10 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     protected final ThreadPoolExecutorWithExceptions tileReadExecutor;
     protected final ThreadPoolExecutorWithExceptions completedWorkExecutor = new ThreadPoolExecutorWithExceptions(1);
     protected ClusterDataConverter<CLUSTER_OUTPUT_RECORD> converter = null;
+    protected int numThreads;
     protected List<Integer> tiles;
     protected boolean tileProcessingComplete = false;
+    protected BarcodeExtractor barcodeExtractor;
 
     /**
      * Constructs a new BasecallsConverter object.
@@ -96,11 +94,13 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             final boolean ignoreUnexpectedBarcodes,
             final boolean applyEamssFiltering,
             final boolean includeNonPfReads,
-            final int numWriteThreads
+            final int numWriteThreads,
+            final BarcodeExtractor barcodeExtractor
     ) {
         this.barcodeRecordWriterMap = barcodeRecordWriterMap;
         this.ignoreUnexpectedBarcodes = ignoreUnexpectedBarcodes;
         this.demultiplex = demultiplex;
+        this.barcodeExtractor = barcodeExtractor;
         this.numThreads = numThreads;
 
         this.factory = new IlluminaDataProviderFactory(basecallsDir,
@@ -108,6 +108,7 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         this.factory.setApplyEamssFiltering(applyEamssFiltering);
         this.includeNonPfReads = includeNonPfReads;
         this.tiles = factory.getAvailableTiles();
+
         tiles.sort(TILE_NUMBER_COMPARATOR);
         setTileLimits(firstTile, tileLimit);
         tileWriteExecutor = new ThreadPoolExecutorWithExceptions(numWriteThreads);
@@ -336,6 +337,29 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
         if (tileLimit != null && tiles.size() > tileLimit) {
             tiles = tiles.subList(0, tileLimit);
         }
+    }
+
+    protected String maybeDemultiplex(ClusterData cluster) {
+        String barcode = null;
+        if (demultiplex) {
+            // If there is no barcode parsed from barcode file try on the fly demux.
+            if (barcodeExtractor != null) {
+                int[] barcodeIndices = this.factory.getOutputReadStructure().sampleBarcodes.getIndices();
+                byte[][] readSubsequences = new byte[barcodeIndices.length][];
+                byte[][] qualityScores = new byte[barcodeIndices.length][];
+                for (int i = 0; i < barcodeIndices.length; i++) {
+                    ReadData barcodeRead = cluster.getRead(barcodeIndices[i]);
+                    readSubsequences[i] = barcodeRead.getBases();
+                    qualityScores[i] = barcodeRead.getQualities();
+                }
+                BarcodeExtractor.BarcodeMatch match = barcodeExtractor.findBestBarcode(readSubsequences,
+                        qualityScores);
+                if(match.isMatched()) barcode = match.getBarcode();
+            } else {
+                barcode = cluster.getMatchedBarcode();
+            }
+        }
+        return barcode;
     }
 
     protected void interruptAndShutdownExecutors(ThreadPoolExecutorWithExceptions... executors) {

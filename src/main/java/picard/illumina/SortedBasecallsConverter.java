@@ -10,6 +10,7 @@ import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * SortedBasecallsConverter utilizes an underlying IlluminaDataProvider to convert parsed and decoded sequencing data
@@ -74,11 +75,12 @@ public class SortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsCo
             final BclQualityEvaluationStrategy bclQualityEvaluationStrategy,
             final boolean ignoreUnexpectedBarcodes,
             final boolean applyEamssFiltering,
-            final boolean includeNonPfReads
+            final boolean includeNonPfReads,
+            final BarcodeExtractor barcodeExtractor
     ) {
         super(basecallsDir, barcodesDir, lane, readStructure, barcodeRecordWriterMap, demultiplex,
                 numThreads, firstTile, tileLimit, bclQualityEvaluationStrategy,
-                ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, numThreads);
+                ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, numThreads, barcodeExtractor);
 
         this.tmpDirs = tmpDirs;
         this.maxReadsInRamPerTile = maxReadsInRamPerTile;
@@ -157,7 +159,8 @@ public class SortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsCo
                 final ClusterData cluster = dataProvider.next();
                 readProgressLogger.record(null, 0);
                 if (includeNonPfReads || cluster.isPf()) {
-                    addRecord(cluster.getMatchedBarcode(), converter.convertClusterToOutputRecord(cluster));
+                    final String barcode = maybeDemultiplex(cluster);
+                    addRecord(barcode, converter.convertClusterToOutputRecord(cluster));
                 }
             }
 

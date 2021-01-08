@@ -58,11 +58,12 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             final BclQualityEvaluationStrategy bclQualityEvaluationStrategy,
             final boolean ignoreUnexpectedBarcodes,
             final boolean applyEamssFiltering,
-            final boolean includeNonPfReads
+            final boolean includeNonPfReads,
+            final BarcodeExtractor barcodeExtractor
     ) {
         super(basecallsDir, barcodesDir, lane, readStructure, barcodeRecordWriterMap, demultiplex,
                 numThreads, firstTile, tileLimit, bclQualityEvaluationStrategy,
-                ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, 1);
+                ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads,1, barcodeExtractor);
     }
 
     /**
@@ -141,7 +142,8 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             ClusterData cluster;
             while ((cluster = clusterData.poll()) != null) {
                 if (includeNonPfReads || cluster.isPf()) {
-                    barcodeRecordWriterMap.get(cluster.getMatchedBarcode()).write(converter.convertClusterToOutputRecord(cluster));
+                    final String barcode = maybeDemultiplex(cluster);
+                    barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
                     writeProgressLogger.record(null, 0);
                 }
             }
