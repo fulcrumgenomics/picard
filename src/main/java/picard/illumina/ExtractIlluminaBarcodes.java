@@ -214,8 +214,9 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
 
     private final Map<String, BarcodeMetric> barcodeToMetrics = new LinkedHashMap<>();
 
-    private final static int MAX_LOOKUP_SIZE = 100000;
+    private final static int MAX_LOOKUP_SIZE = 4096;
     private final ConcurrentHashMap<ByteString, PerTileBarcodeExtractor.BarcodeMatch> barcodeLookupMap = new ConcurrentHashMap<>(MAX_LOOKUP_SIZE);
+    private final Set<ByteString> barcodeByteStrings = new HashSet<>();
 
     private final NumberFormat tileNumberFormatter = NumberFormat.getNumberInstance();
     private BclQualityEvaluationStrategy bclQualityEvaluationStrategy;
@@ -236,9 +237,12 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
 
         // Create BarcodeMetric for counting reads that don't match any barcode
         final String[] noMatchBarcode = new String[readStructure.sampleBarcodes.length()];
+        final byte[][] perfectScores = new byte[readStructure.sampleBarcodes.length()][];
         int index = 0;
         for (final ReadDescriptor d : readStructure.descriptors) {
             if (d.type == ReadType.Barcode) {
+                perfectScores[index] = new byte[d.length];
+                Arrays.fill(perfectScores[index], (byte) 60);
                 noMatchBarcode[index++] = StringUtil.repeatCharNTimes('N', d.length);
             }
         }
@@ -257,6 +261,35 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         LOG.info("Processing with " + numProcessors + " PerTileBarcodeExtractor(s).");
         final ThreadPoolExecutor pool = new ThreadPoolExecutorWithExceptions(numProcessors);
 
+        for (final BarcodeMetric metric : barcodeToMetrics.values()) {
+            this.barcodeByteStrings.add(new ByteString(metric.barcodeBytes));
+        }
+
+        // Prepopulate the lookup map with all perfect barcodes
+        for(BarcodeMetric metric : barcodeToMetrics.values()){
+            PerTileBarcodeExtractor.BarcodeMatch match = PerTileBarcodeExtractor.calculateBarcodeMatch(metric.barcodeBytes,
+                    perfectScores,
+                    barcodeByteStrings,
+                    MAX_NO_CALLS,
+                    MAX_MISMATCHES,
+                    MIN_MISMATCH_DELTA,
+                    MINIMUM_BASE_QUALITY,
+                    DISTANCE_MODE);
+            barcodeLookupMap.put(new ByteString(metric.barcodeBytes), match);
+        }
+
+        // Prepopulate all no call barcode match
+        PerTileBarcodeExtractor.BarcodeMatch noCallMatch = PerTileBarcodeExtractor.calculateBarcodeMatch(noMatchMetric.barcodeBytes,
+                perfectScores,
+                barcodeByteStrings,
+                MAX_NO_CALLS,
+                MAX_MISMATCHES,
+                MIN_MISMATCH_DELTA,
+                MINIMUM_BASE_QUALITY,
+                DISTANCE_MODE
+                );
+        barcodeLookupMap.put(new ByteString(noMatchMetric.barcodeBytes), noCallMatch);
+
         final List<PerTileBarcodeExtractor> extractors = new ArrayList<>(factory.getAvailableTiles().size());
         // TODO: This is terribly inefficient; we're opening a huge number of files via the extractor constructor and we never close them.
         for (final int tile : factory.getAvailableTiles()) {
@@ -265,6 +298,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                     getBarcodeFile(tile),
                     barcodeToMetrics,
                     barcodeLookupMap,
+                    barcodeByteStrings,
                     noMatchMetric,
                     factory,
                     MINIMUM_BASE_QUALITY,
@@ -406,13 +440,27 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         if (BARCODE_FILE != null) {
             parseBarcodeFile(messages);
         } else {
+            final int numBarcodes = readStructure.sampleBarcodes.length();
             final Set<String> barcodes = new HashSet<>();
+
             for (final String barcode : BARCODE) {
                 if (barcodes.contains(barcode)) {
                     messages.add("Barcode " + barcode + " specified more than once.");
                 }
                 barcodes.add(barcode);
-                final BarcodeMetric metric = new BarcodeMetric(null, null, barcode, new String[]{barcode});
+                int barcodeNum = 0;
+                int pos = 0;
+                final String[] bcStrings = new String[numBarcodes];
+                for (final ReadDescriptor rd : readStructure.descriptors) {
+                    if (rd.type != ReadType.Barcode) {
+                        continue;
+                    }
+                    bcStrings[barcodeNum] = barcode.substring(pos, pos + rd.length);
+                    pos += rd.length;
+                    ++barcodeNum;
+                }
+
+                final BarcodeMetric metric = new BarcodeMetric(null, null, IlluminaUtil.barcodeSeqsToString(bcStrings), bcStrings);
                 barcodeToMetrics.put(barcode, metric);
             }
         }
@@ -599,7 +647,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
     /**
      * Class to give a byte[][] a hashcode and equals without copying the whole contents into a String.
      */
-    private static final class ByteString {
+    static final class ByteString {
         private final byte[][] bytes;
         private final int hash;
 
@@ -639,6 +687,15 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                 return false;
             }
         }
+
+        @Override
+        public String toString() {
+            StringBuilder barcodeBuilder = new StringBuilder();
+            for(byte[] barcode : bytes){
+                barcodeBuilder.append(new String(barcode, StandardCharsets.UTF_8));
+            }
+            return barcodeBuilder.toString();
+        }
     }
 
     /**
@@ -648,14 +705,13 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
         private final int tile;
         private final File barcodeFile;
         private final Map<String, BarcodeMetric> metrics;
-        private final List<byte[][]> barcodesBytes;
+        private final Set<ByteString> barcodesBytes;
         private final BarcodeMetric noMatch;
         private Exception exception = null;
         private final boolean usingQualityScores;
         private BaseIlluminaDataProvider provider;
         private final ReadStructure outputReadStructure;
         private final int maxNoCalls, maxMismatches, minMismatchDelta, minimumBaseQuality;
-        private final IlluminaDataProviderFactory factory = null;
         private final DistanceMetric distanceMode;
         private final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap;
 
@@ -679,18 +735,18 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
 
         /**
          * Constructor
-         *
-         * @param tile             The number of the tile being processed; used for logging only.
-         * @param barcodeFile      The file to write the barcodes to
-         * @param noMatchMetric    A "template" metric that is cloned and the clone is stored internally for accumulating data
-         * @param barcodeToMetrics A "template" metric map whose metrics are cloned, and the clones are stored internally for accumulating data
+         *  @param tile               The number of the tile being processed; used for logging only.
+         * @param barcodeFile        The file to write the barcodes to
+         * @param barcodeToMetrics   A "template" metric map whose metrics are cloned, and the clones are stored internally for accumulating data
+         * @param barcodeByteStrings A Set of all the barcodes as ByteStrings
+         * @param noMatchMetric      A "template" metric that is cloned and the clone is stored internally for accumulating data
          */
         public PerTileBarcodeExtractor(
                 final int tile,
                 final File barcodeFile,
                 final Map<String, BarcodeMetric> barcodeToMetrics,
                 final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap,
-                final BarcodeMetric noMatchMetric,
+                Set<ByteString> barcodeByteStrings, final BarcodeMetric noMatchMetric,
                 final IlluminaDataProviderFactory factory,
                 final int minimumBaseQuality,
                 final int maxNoCalls,
@@ -709,12 +765,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
             for (final String key : barcodeToMetrics.keySet()) {
                 this.metrics.put(key, BarcodeMetric.copy(barcodeToMetrics.get(key)));
             }
-
-            this.barcodesBytes = new ArrayList<>(barcodeToMetrics.size());
-            for (final BarcodeMetric metric : barcodeToMetrics.values()) {
-                this.barcodesBytes.add(metric.barcodeBytes);
-            }
-
+            this.barcodesBytes = barcodeByteStrings;
             this.barcodeLookupMap = barcodeLookupMap;
             this.noMatch = BarcodeMetric.copy(noMatchMetric);
             this.provider = factory.makeDataProvider(tile);
@@ -819,7 +870,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
          */
         private BarcodeMatch findBestBarcode(final byte[][] readSubsequences,
                                              final byte[][] qualityScores,
-                                             final List<byte[][]> barcodesBytes,
+                                             final Set<ByteString> barcodesBytes,
                                              final int maxNoCalls,
                                              final int maxMismatches,
                                              final int minMismatchDelta,
@@ -831,7 +882,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                 match = calculateBarcodeMatch(readSubsequences, qualityScores, barcodesBytes, maxNoCalls,
                         maxMismatches, minMismatchDelta, minimumBaseQuality, distanceMode);
 
-                if (canUseLookupTable && barcodeLookupMap.size() < MAX_LOOKUP_SIZE) {
+                if (canUseLookupTable && match.isMatched()) {
                     barcodeLookupMap.put(barcodesAsString, match);
                 }
             }
@@ -841,7 +892,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
 
         static BarcodeMatch calculateBarcodeMatch(final byte[][] readSubsequences,
                                                   final byte[][] qualityScores,
-                                                  final List<byte[][]> barcodesBytes,
+                                                  final Set<ByteString> barcodesBytes,
                                                   final int maxNoCalls,
                                                   final int maxMismatches,
                                                   final int minMismatchDelta,
@@ -868,9 +919,9 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
             int numMismatchesInBestBarcode = totalBarcodeReadBases + 1;
             int numMismatchesInSecondBestBarcode = totalBarcodeReadBases + 1;
 
-            for (final byte[][] barcodeBytes : barcodesBytes) {
+            for (final ByteString barcodeBytes : barcodesBytes) {
                 // need to add maxMismatches + minMismatchDelta together since the result might get used as numMismatchesInSecondBestBarcode
-                final BarcodeEditDistanceQuery barcodeEditDistanceQuery = new BarcodeEditDistanceQuery(barcodeBytes, readSubsequences, qualityScores,
+                final BarcodeEditDistanceQuery barcodeEditDistanceQuery = new BarcodeEditDistanceQuery(barcodeBytes.bytes, readSubsequences, qualityScores,
                         minimumBaseQuality, Math.min(maxMismatches, numMismatchesInBestBarcode) + minMismatchDelta);
                 final int numMismatches = distanceMode.distance(barcodeEditDistanceQuery);
 
@@ -879,7 +930,7 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                         numMismatchesInSecondBestBarcode = numMismatchesInBestBarcode;
                     }
                     numMismatchesInBestBarcode = numMismatches;
-                    bestBarcode = barcodeBytesToString(barcodeBytes);
+                    bestBarcode = barcodeBytes.toString();
                 } else if (numMismatches < numMismatchesInSecondBestBarcode) {
                     numMismatchesInSecondBestBarcode = numMismatches;
                 }
@@ -890,29 +941,23 @@ public class ExtractIlluminaBarcodes extends CommandLineProgram {
                     numMismatchesInBestBarcode <= maxMismatches &&
                     numMismatchesInSecondBestBarcode - numMismatchesInBestBarcode >= minMismatchDelta;
 
-            // If we have something that's not a "match" but matches one barcode
-            // slightly, we output that matching barcode in lower case
-            if (numNoCalls + numMismatchesInBestBarcode < totalBarcodeReadBases && bestBarcode != null) {
-                match.mismatches = numMismatchesInBestBarcode;
-                match.mismatchesToSecondBest = numMismatchesInSecondBestBarcode;
-                match.barcode = bestBarcode.toLowerCase();
-            } else {
-                match.mismatches = totalBarcodeReadBases;
-                match.barcode = "";
-            }
+            match.mismatches = numMismatchesInBestBarcode;
+            match.mismatchesToSecondBest = numMismatchesInSecondBestBarcode;
 
             if (match.matched) {
                 match.barcode = bestBarcode;
+            } else {
+                // If we have something that's not a "match" but matches one barcode
+                // slightly, we output that matching barcode in lower case
+                if (numNoCalls + numMismatchesInBestBarcode < totalBarcodeReadBases && bestBarcode != null) {
+                    match.barcode = bestBarcode.toLowerCase();
+                } else {
+                    match.mismatches = totalBarcodeReadBases;
+                    match.barcode = "";
+                }
             }
-            return match;
-        }
 
-        private static String barcodeBytesToString(byte[][] barcodeBytes) {
-            StringBuilder barcodeBuilder = new StringBuilder();
-            for(byte[] barcode : barcodeBytes){
-                barcodeBuilder.append(new String(barcode, StandardCharsets.UTF_8));
-            }
-            return barcodeBuilder.toString();
+            return match;
         }
 
         private static void updateMetrics(final BarcodeMatch match, final boolean passingFilter,
