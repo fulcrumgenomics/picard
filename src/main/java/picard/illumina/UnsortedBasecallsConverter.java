@@ -91,5 +91,6 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             }
             dataProvider.close();
         }
+        barcodeRecordWriterMap.values().forEach(ConvertedClusterDataWriter::close);
     }
 }
