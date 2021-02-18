@@ -141,10 +141,10 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             if(barcodeExtractor != null) {
                 this.metrics = new LinkedHashMap<>(barcodeExtractor.getMetrics().size());
                 for (final String key : barcodeExtractor.getMetrics().keySet()) {
-                    this.metrics.put(key, BarcodeMetric.copy(barcodeExtractor.getMetrics().get(key)));
+                    this.metrics.put(key, barcodeExtractor.getMetrics().get(key).copy());
                 }
 
-                this.noMatch = BarcodeMetric.copy(barcodeExtractor.getNoMatchMetric());
+                this.noMatch = barcodeExtractor.getNoMatchMetric().copy();
             }
         }
 

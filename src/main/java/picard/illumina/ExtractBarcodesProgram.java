@@ -2,6 +2,7 @@ package picard.illumina;
 
 import htsjdk.samtools.metrics.MetricsFile;
 import htsjdk.samtools.util.StringUtil;
+import htsjdk.samtools.util.Tuple;
 import org.broadinstitute.barclay.argparser.Argument;
 import picard.cmdline.CommandLineProgram;
 import picard.cmdline.StandardOptionDefinitions;
@@ -46,23 +47,16 @@ public abstract class ExtractBarcodesProgram extends CommandLineProgram {
     @Argument(doc = "The Illumina basecalls directory. ", shortName = "B")
     public File BASECALLS_DIR;
 
-    @Argument(doc = "Where to write _barcode.txt files.  By default, these are written to BASECALLS_DIR.", optional = true)
-    public File OUTPUT_DIR;
-
     @Argument(doc = "Per-barcode and per-lane metrics written to this file.", shortName = StandardOptionDefinitions.METRICS_FILE_SHORT_NAME, optional = true)
     public File METRICS_FILE;
 
-    @Argument
-    public Boolean BARCODE_EXTRACT = false;
-
-    @Argument(optional = true)
+    @Argument(doc = "The input file that defines parameters for the program. This is the BARCODE_FILE for" +
+            " `ExtractIlluminaBarcodes` or the MULTIPLEX_PARAMS or LIBRARY_PARAMS file for `IlluminaBasecallsToFastq` " +
+            " or `IlluminaBasecallsToSam`", optional = true)
     public File INPUT_PARAMS_FILE;
 
     protected IlluminaDataProviderFactory factory;
-    protected final Map<String, BarcodeMetric> barcodeToMetrics = new LinkedHashMap<>();
-    protected final static int MAX_LOOKUP_SIZE = 4096;
-    protected final ConcurrentHashMap<BarcodeExtractor.ByteString, BarcodeExtractor.BarcodeMatch> barcodeLookupMap = new ConcurrentHashMap<>(MAX_LOOKUP_SIZE);
-    protected final Set<BarcodeExtractor.ByteString> barcodeByteStrings = new HashSet<>();
+    protected Map<String, BarcodeMetric> barcodeToMetrics = new LinkedHashMap<>();
     protected final BclQualityEvaluationStrategy bclQualityEvaluationStrategy = new BclQualityEvaluationStrategy(MINIMUM_QUALITY);
     protected BarcodeMetric noMatchMetric;
     private final NumberFormat tileNumberFormatter = NumberFormat.getNumberInstance();
@@ -75,45 +69,22 @@ public abstract class ExtractBarcodesProgram extends CommandLineProgram {
     protected BarcodeExtractor createBarcodeExtractor() {
         // Create BarcodeMetric for counting reads that don't match any barcode
         final String[] noMatchBarcode = new String[readStructure.sampleBarcodes.length()];
-        final byte[][] perfectScores = new byte[readStructure.sampleBarcodes.length()][];
         int index = 0;
         for (final ReadDescriptor d : readStructure.descriptors) {
             if (d.type == ReadType.Barcode) {
-                perfectScores[index] = new byte[d.length];
-                Arrays.fill(perfectScores[index], (byte) 60);
                 noMatchBarcode[index++] = StringUtil.repeatCharNTimes('N', d.length);
             }
         }
-
         this.noMatchMetric = new BarcodeMetric(null, null, IlluminaUtil.barcodeSeqsToString(noMatchBarcode), noMatchBarcode);
 
-        for (final BarcodeMetric metric : barcodeToMetrics.values()) {
-            this.barcodeByteStrings.add(new BarcodeExtractor.ByteString(metric.barcodeBytes));
-        }
-
-        final BarcodeExtractor barcodeExtractor = new BarcodeExtractor(barcodeToMetrics,
-                barcodeLookupMap,
-                barcodeByteStrings,
+        return new BarcodeExtractor(barcodeToMetrics,
                 noMatchMetric,
+                readStructure,
                 MAX_NO_CALLS,
                 MAX_MISMATCHES,
                 MIN_MISMATCH_DELTA,
                 MINIMUM_BASE_QUALITY,
                 DISTANCE_MODE);
-
-        // Prepopulate the lookup map with all perfect barcodes
-        for(BarcodeMetric metric : barcodeToMetrics.values()){
-            BarcodeExtractor.BarcodeMatch match = barcodeExtractor.calculateBarcodeMatch(metric.barcodeBytes,
-                    perfectScores);
-            barcodeLookupMap.put(new BarcodeExtractor.ByteString(metric.barcodeBytes), match);
-        }
-
-        // Prepopulate all no call barcode match
-        BarcodeExtractor.BarcodeMatch noCallMatch = barcodeExtractor.calculateBarcodeMatch(noMatchMetric.barcodeBytes,
-                perfectScores);
-
-        barcodeLookupMap.put(new BarcodeExtractor.ByteString(noMatchMetric.barcodeBytes), noCallMatch);
-        return barcodeExtractor;
     }
 
     /**
@@ -125,7 +96,7 @@ public abstract class ExtractBarcodesProgram extends CommandLineProgram {
     @Override
     protected String[] customCommandLineValidation() {
         readStructure = new ReadStructure(READ_STRUCTURE);
-        final List<String> messages = new ArrayList<>();
+        List<String> messages = new ArrayList<>();
         tileNumberFormatter.setMinimumIntegerDigits(4);
         tileNumberFormatter.setGroupingUsed(false);
 
@@ -135,7 +106,10 @@ public abstract class ExtractBarcodesProgram extends CommandLineProgram {
         factory = new IlluminaDataProviderFactory(BASECALLS_DIR, LANE, readStructure, bclQualityEvaluationStrategy, datatypes);
 
         if (INPUT_PARAMS_FILE != null) {
-            SampleInputParameters.parseInputFile(INPUT_PARAMS_FILE, readStructure, barcodeToMetrics, messages);
+            Tuple<Map<String, BarcodeMetric>, List<String>> test = SampleInputParameters.parseInputFile(INPUT_PARAMS_FILE, readStructure);
+            barcodeToMetrics = test.a;
+            messages = test.b;
+
             if (barcodeToMetrics.keySet().isEmpty()) {
                 messages.add("No barcodes have been specified.");
             }

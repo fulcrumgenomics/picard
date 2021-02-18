@@ -109,13 +109,13 @@ public class BarcodeMetric extends MetricBase {
     /**
      * Creates a copy of metric initialized with only non-accumulated and non-calculated values set
      */
-    public static BarcodeMetric copy(final BarcodeMetric metric) {
+    public BarcodeMetric copy() {
         final BarcodeMetric result = new BarcodeMetric();
-        result.BARCODE = metric.BARCODE;
-        result.BARCODE_WITHOUT_DELIMITER = metric.BARCODE_WITHOUT_DELIMITER;
-        result.BARCODE_NAME = metric.BARCODE_NAME;
-        result.LIBRARY_NAME = metric.LIBRARY_NAME;
-        result.barcodeBytes = metric.barcodeBytes;
+        result.BARCODE = this.BARCODE;
+        result.BARCODE_WITHOUT_DELIMITER = this.BARCODE_WITHOUT_DELIMITER;
+        result.BARCODE_NAME = this.BARCODE_NAME;
+        result.LIBRARY_NAME = this.LIBRARY_NAME;
+        result.barcodeBytes = this.barcodeBytes;
         return result;
     }
 

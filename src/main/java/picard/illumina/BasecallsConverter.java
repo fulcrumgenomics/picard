@@ -80,6 +80,8 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
      * @param applyEamssFiltering          If true, apply EAMSS filtering if parsing BCLs for bases and quality scores.
      * @param includeNonPfReads            If true, will include ALL reads (including those which do not have PF set).
      *                                     This option does nothing for instruments that output cbcls (Novaseqs)
+     * @param numWriteThreads              The number of threads used for writing output records.
+     * @param barcodeExtractor             The `BarcodeExtractor` used to do inline barcode matching.
      */
     public BasecallsConverter(
             final File basecallsDir,
@@ -285,11 +287,12 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
      *
      * @param readStructure The read structure that defines how the read is set up.
      * @param demultiplex   If true, output is split by barcode, otherwise all are written to the same output stream.
-     * @param barcodesDir
+     * @param barcodesDir   The barcodes dir that contains barcode files.
      * @return A data type array for each piece of data needed to satisfy the read structure.
      */
     protected static Set<IlluminaDataType> getDataTypesFromReadStructure(final ReadStructure readStructure,
-                                                                         final boolean demultiplex, File barcodesDir) {
+                                                                         final boolean demultiplex,
+                                                                         File barcodesDir) {
         if (!readStructure.hasSampleBarcode() || !demultiplex || barcodesDir == null) {
             return DATA_TYPES_WITHOUT_BARCODE;
         } else {
@@ -344,7 +347,7 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     protected String maybeDemultiplex(ClusterData cluster, Map<String, BarcodeMetric> metrics, BarcodeMetric noMatch) {
         String barcode = null;
         if (demultiplex) {
-            // If there is no barcode parsed from barcode file try on the fly demux.
+            // Tf a barcode extractor was provided for on-the-fly demux us it
             if (barcodeExtractor != null) {
                 int[] barcodeIndices = this.factory.getOutputReadStructure().sampleBarcodes.getIndices();
                 byte[][] readSubsequences = new byte[barcodeIndices.length][];
@@ -355,7 +358,7 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
                     qualityScores[i] = barcodeRead.getQualities();
                 }
                 BarcodeExtractor.BarcodeMatch match = barcodeExtractor.findBestBarcode(readSubsequences,
-                        qualityScores);
+                        qualityScores, true);
 
                 BarcodeExtractor.updateMetrics(match, cluster.isPf(), metrics, noMatch);
 

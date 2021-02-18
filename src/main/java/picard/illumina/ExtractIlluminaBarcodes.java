@@ -139,6 +139,9 @@ public class ExtractIlluminaBarcodes extends ExtractBarcodesProgram {
             "the number available on the machine less NUM_PROCESSORS.")
     public int NUM_PROCESSORS = 1;
 
+    @Argument(doc = "Where to write _barcode.txt files.  By default, these are written to BASECALLS_DIR.", optional = true)
+    public File OUTPUT_DIR;
+
     private static final Log LOG = Log.getInstance(ExtractIlluminaBarcodes.class);
 
     private final NumberFormat tileNumberFormatter = NumberFormat.getNumberInstance();
@@ -198,7 +201,6 @@ public class ExtractIlluminaBarcodes extends ExtractBarcodesProgram {
         ThreadPoolExecutorUtil.awaitThreadPoolTermination("Per tile extractor executor", pool, Duration.ofMinutes(5));
 
         LOG.info("Processed " + extractors.size() + " tiles.");
-        LOG.info("Cache grew to " + this.barcodeLookupMap.size() + " entries.");
         for (final PerTileBarcodeExtractor extractor : extractors) {
             for (final String key : barcodeToMetrics.keySet()) {
                 barcodeToMetrics.get(key).merge(extractor.getMetrics().get(key));
@@ -308,13 +310,13 @@ public class ExtractIlluminaBarcodes extends ExtractBarcodesProgram {
             this.barcodeExtractor = extractor;
             this.tile = tile;
             this.barcodeFile = barcodeFile;
-            this.usingQualityScores = barcodeExtractor.minimumBaseQuality > 0;
+            this.usingQualityScores = barcodeExtractor.getMinimumBaseQuality() > 0;
             this.metrics = new LinkedHashMap<>(barcodeExtractor.getMetrics().size());
             for (final String key : barcodeExtractor.getMetrics().keySet()) {
-                this.metrics.put(key, BarcodeMetric.copy(barcodeExtractor.getMetrics().get(key)));
+                this.metrics.put(key, barcodeExtractor.getMetrics().get(key).copy());
             }
 
-            this.noMatch = BarcodeMetric.copy(barcodeExtractor.getNoMatchMetric());
+            this.noMatch = barcodeExtractor.getNoMatchMetric().copy();
             this.provider = factory.makeDataProvider(tile);
             this.outputReadStructure = factory.getOutputReadStructure();
         }
@@ -360,16 +362,16 @@ public class ExtractIlluminaBarcodes extends ExtractBarcodesProgram {
                         }
                     }
                     final boolean passingFilter = cluster.isPf();
-                    final BarcodeExtractor.BarcodeMatch match = barcodeExtractor.findBestBarcode(barcodeSubsequences, qualityScores);
+                    final BarcodeExtractor.BarcodeMatch match = barcodeExtractor.findBestBarcode(barcodeSubsequences, qualityScores, false);
 
                     BarcodeExtractor.updateMetrics(match, passingFilter, metrics, noMatch);
 
-                    final String yOrN = (match.matched ? "Y" : "N");
+                    final String yOrN = (match.isMatched() ? "Y" : "N");
 
                     for (final byte[] bc : barcodeSubsequences) {
                         writer.write(StringUtil.bytesToString(bc));
                     }
-                    writer.write("\t" + yOrN + "\t" + match.barcode + "\t" + match.mismatches + "\t" + match.mismatchesToSecondBest);
+                    writer.write("\t" + yOrN + "\t" + match.getBarcode() + "\t" + match.getMismatches() + "\t" + match.getMismatchesToSecondBest());
                     writer.newLine();
                 }
                 writer.close();

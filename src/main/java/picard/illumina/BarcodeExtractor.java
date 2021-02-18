@@ -1,41 +1,75 @@
 package picard.illumina;
 
-import htsjdk.samtools.metrics.MetricBase;
 import htsjdk.samtools.util.SequenceUtil;
+import htsjdk.samtools.util.StringUtil;
+import picard.illumina.parser.ReadDescriptor;
+import picard.illumina.parser.ReadStructure;
+import picard.illumina.parser.ReadType;
 import picard.util.BarcodeEditDistanceQuery;
 import picard.util.IlluminaUtil;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * BarcodeExtractor is used to match barcodes and collect barcode match metrics.
+ */
 public class BarcodeExtractor {
-    private final Map<String, BarcodeMetric> metrics;
+    private final Map<String, BarcodeMetric> metrics = new HashMap<>();
     private final BarcodeMetric noMatch;
-    final Set<ByteString> barcodesBytes;
-    final int maxNoCalls, maxMismatches, minMismatchDelta, minimumBaseQuality;
-    final DistanceMetric distanceMode;
-    final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap;
+    private final Set<ByteString> barcodesBytes;
+    private final int maxNoCalls, maxMismatches, minMismatchDelta, minimumBaseQuality;
+    private final DistanceMetric distanceMode;
+    private final static int INITIAL_LOOKUP_SIZE = 4096;
+    private final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap = new ConcurrentHashMap<>(INITIAL_LOOKUP_SIZE);
 
     public BarcodeExtractor(final Map<String, BarcodeMetric> barcodeToMetrics,
-                            final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap,
-                            Set<ByteString> barcodeByteStrings, final BarcodeMetric noMatchMetric,
+                            final BarcodeMetric noMatchMetric,
+                            final ReadStructure readStructure,
                             final int maxNoCalls,
                             final int maxMismatches,
                             final int minMismatchDelta,
                             final int minimumBaseQuality,
                             final DistanceMetric distanceMode) {
-        this.metrics = barcodeToMetrics;
-        this.barcodeLookupMap = barcodeLookupMap;
-        this.barcodesBytes = barcodeByteStrings;
-        this.noMatch = noMatchMetric;
         this.maxNoCalls = maxNoCalls;
         this.maxMismatches = maxMismatches;
         this.minMismatchDelta = minMismatchDelta;
         this.minimumBaseQuality = minimumBaseQuality;
         this.distanceMode = distanceMode;
+        // Create BarcodeMetric for counting reads that don't match any barcode
+        final String[] noMatchBarcode = new String[readStructure.sampleBarcodes.length()];
+        final byte[][] perfectScores = new byte[readStructure.sampleBarcodes.length()][];
+        int index = 0;
+        for (final ReadDescriptor d : readStructure.descriptors) {
+            if (d.type == ReadType.Barcode) {
+                perfectScores[index] = new byte[d.length];
+                Arrays.fill(perfectScores[index], (byte) 60);
+                noMatchBarcode[index++] = StringUtil.repeatCharNTimes('N', d.length);
+            }
+        }
+
+        this.noMatch = new BarcodeMetric(null, null, IlluminaUtil.barcodeSeqsToString(noMatchBarcode), noMatchBarcode);
+
+        Set<BarcodeExtractor.ByteString> barcodesBytes = new HashSet<>(barcodeToMetrics.size());
+        for (final BarcodeMetric metric : barcodeToMetrics.values()) {
+            barcodesBytes.add(new BarcodeExtractor.ByteString(metric.barcodeBytes));
+            metrics.put(metric.BARCODE_WITHOUT_DELIMITER, metric);
+        }
+        this.barcodesBytes = barcodesBytes;
+
+        // Prepopulate the lookup map with all perfect barcodes
+        for(BarcodeMetric metric : barcodeToMetrics.values()){
+            BarcodeExtractor.BarcodeMatch match = calculateBarcodeMatch(metric.barcodeBytes,
+                    perfectScores, true);
+            barcodeLookupMap.put(new BarcodeExtractor.ByteString(metric.barcodeBytes), match);
+        }
+
+        // Prepopulate all no call barcode match
+        BarcodeExtractor.BarcodeMatch noCallMatch = calculateBarcodeMatch(noMatchMetric.barcodeBytes,
+                perfectScores, true);
+
+        barcodeLookupMap.put(new BarcodeExtractor.ByteString(noMatchMetric.barcodeBytes), noCallMatch);
     }
 
     public Map<String, BarcodeMetric> getMetrics() {
@@ -45,6 +79,7 @@ public class BarcodeExtractor {
     public BarcodeMetric getNoMatchMetric() {
         return this.noMatch;
     }
+
     /**
      * Find the best barcode match for the given read sequence, and accumulate metrics
      *
@@ -59,23 +94,24 @@ public class BarcodeExtractor {
      * @return perfect barcode string, if there was a match within tolerance, or null if not.
      */
     BarcodeMatch findBestBarcode(final byte[][] readSubsequences,
-                                 final byte[][] qualityScores) {
+                                 final byte[][] qualityScores,
+                                 final boolean isInlineMatching) {
         final boolean canUseLookupTable = areAllQualitiesAboveMinimum(qualityScores, minimumBaseQuality);
-        final ByteString barcodesAsString = new ByteString(readSubsequences);
-        BarcodeMatch match = canUseLookupTable ? barcodeLookupMap.get(barcodesAsString) : null;
-        if (match == null) {
-            match = calculateBarcodeMatch(readSubsequences, qualityScores);
-
-            if (canUseLookupTable && match.isMatched()) {
-                barcodeLookupMap.put(barcodesAsString, match);
-            }
+        if (canUseLookupTable) {
+            final ByteString barcodesAsString = new ByteString(readSubsequences);
+            BarcodeMatch match = barcodeLookupMap.get(barcodesAsString);
+            if (match == null) match = calculateBarcodeMatch(readSubsequences, qualityScores, isInlineMatching);
+            if (match.isMatched()) barcodeLookupMap.put(barcodesAsString, match);
+            return match;
         }
-
-        return match;
+        else {
+            return calculateBarcodeMatch(readSubsequences, qualityScores, isInlineMatching);
+        }
     }
 
     BarcodeMatch calculateBarcodeMatch(final byte[][] readSubsequences,
-                                       final byte[][] qualityScores) {
+                                       final byte[][] qualityScores,
+                                       boolean isInlineMatching) {
         final BarcodeMatch match;
         String bestBarcode = null;
         match = new BarcodeMatch();
@@ -88,6 +124,11 @@ public class BarcodeExtractor {
             for (final byte b : bc) {
                 if (SequenceUtil.isNoCall(b)) {
                     ++numNoCalls;
+                }
+                if(isInlineMatching && numNoCalls > maxNoCalls) {
+                    match.mismatches = totalBarcodeReadBases;
+                    match.barcode = "";
+                    return match;
                 }
             }
         }
@@ -127,7 +168,7 @@ public class BarcodeExtractor {
         } else {
             // If we have something that's not a "match" but matches one barcode
             // slightly, we output that matching barcode in lower case
-            if (numNoCalls + numMismatchesInBestBarcode < totalBarcodeReadBases && bestBarcode != null) {
+            if (!isInlineMatching && numNoCalls + numMismatchesInBestBarcode < totalBarcodeReadBases && bestBarcode != null) {
                 match.barcode = bestBarcode.toLowerCase();
             } else {
                 match.mismatches = totalBarcodeReadBases;
@@ -138,8 +179,10 @@ public class BarcodeExtractor {
         return match;
     }
 
-    static void updateMetrics(final BarcodeMatch match, final boolean passingFilter,
-                                      final Map<String, BarcodeMetric> metrics, final BarcodeMetric noMatchBarcodeMetric) {
+    static void updateMetrics(final BarcodeMatch match,
+                              final boolean passingFilter,
+                              final Map<String, BarcodeMetric> metrics,
+                              final BarcodeMetric noMatchBarcodeMetric) {
         if (match.matched) {
             final BarcodeMetric matchMetric = metrics.get(match.barcode);
             ++matchMetric.READS;
@@ -182,14 +225,19 @@ public class BarcodeExtractor {
 
         return true;
     }
+
+    public int getMinimumBaseQuality() {
+        return this.minimumBaseQuality;
+    }
+
     /**
      * Utility class to hang onto data about the best match for a given barcode
      */
     public static class BarcodeMatch {
-        boolean matched;
-        String barcode;
-        int mismatches;
-        int mismatchesToSecondBest;
+        private boolean matched;
+        private String barcode;
+        private int mismatches;
+        private int mismatchesToSecondBest;
 
         public boolean isMatched() {
             return matched;
@@ -198,12 +246,16 @@ public class BarcodeExtractor {
         public String getBarcode() {
             return barcode;
         }
+
+        public int getMismatches() { return mismatches; }
+
+        public int getMismatchesToSecondBest() { return mismatchesToSecondBest; }
     }
 
     /**
      * Class to give a byte[][] a hashcode and equals without copying the whole contents into a String.
      */
-    static final class ByteString {
+    private static final class ByteString {
         private final byte[][] bytes;
         private final int hash;
 

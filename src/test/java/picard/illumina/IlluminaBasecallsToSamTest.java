@@ -93,7 +93,7 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
                         "SEQUENCING_CENTER=TEST_CENTER123",
                         "LIBRARY_NAME=Hello, World",
                         "SORT=" + sort,
-                        "BARCODE_EXTRACT=" + otfBarcodeExtract
+                        "MATCH_BARCODES_INLINE=" + otfBarcodeExtract
                 }), 0);
                 final SamFileValidator validator = new SamFileValidator(new PrintWriter(System.out), 100);
                 validator.validateSamFileSummary(SamReaderFactory.makeDefault().open(outputBam), null);
@@ -142,7 +142,7 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
                         "SEQUENCING_CENTER=BI",
                         "LIBRARY_NAME=Hello, World",
                         "SORT=" + sort,
-                        "BARCODE_EXTRACT=" + otfBarcodeExtract));
+                        "MATCH_BARCODES_INLINE=" + otfBarcodeExtract));
 
                 if (umiTags != null) {
                     for (final String umiTag : umiTags) {
@@ -184,19 +184,19 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
     @Test(dataProvider = "multiplexedData")
     public void testMultiplexed(final boolean includeBcInHeader, final ClusterDataToSamConverter.PopulateBarcode populateBarcode,
                                 final boolean includeBarcodeQuality, final File testDataDir) throws Exception {
-        runStandardTest(1, "multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, testDataDir, null, includeBcInHeader, populateBarcode, includeBarcodeQuality,7, 0.038889);
+        runStandardTest(1, "multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, testDataDir, null, includeBcInHeader, populateBarcode, includeBarcodeQuality,7, 0.04);
     }
 
     @DataProvider
     public Object[][] variousConfigurationsData() {
         return new Object[][]{
-                {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, new File(TEST_DATA_DIR.getParentFile(),"sams_with_DS"), null, 7, 0.038889},
-                {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, null, 7, 0.038889},
-                {"multiplexedBarcode.", "library.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M_INDEX, null, 7, 0.038889},
-                {"multiplexedBarcode2.", "library.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M_INDEX, null, 7, 0.038889},
-                {"singleBarcodeAltName.", "multiplexed_positive_rgtags.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, null, 7, 0.038889},
+                {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, new File(TEST_DATA_DIR.getParentFile(),"sams_with_DS"), null, 7, 0.04},
+                {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, null, 7, 0.04},
+                {"multiplexedBarcode.", "library.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M_INDEX, null, 7, 0.04},
+                {"multiplexedBarcode2.", "library.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M_INDEX, null, 7, 0.04},
+                {"singleBarcodeAltName.", "multiplexed_positive_rgtags.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, null, 7, 0.04},
                 {"dualBarcode.", "library_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, null, 2, 0.033333},
-                {"cbclConvert.", "library_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, null, 1, 0.02},
+                {"cbclConvert.", "library_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, null, 1, 0.25},
                 {"hiseqxSingleLocs.", "library_double.params", 2, "25T8B8B25T", TEST_DATA_HISEQX_SINGLE_LOCS, HISEQX_TEST_DATA_DIR, null, 4, 0.033333},
                 {"hiseqxSingleLocs.", "library_double.params", 2, "25T8B8B25T", TEST_DATA_HISEQX_SINGLE_LOCS, HISEQX_TEST_DATA_DIR, null, 4, 0.033333},
                 {"dualBarcode.", "library_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 1101, 2, 0.033333},
@@ -280,7 +280,7 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
                     args.add("BARCODE_POPULATION_STRATEGY=" + populateBarcode.name());
                     args.add("INCLUDE_BARCODE_QUALITY=" + includeBarcodeQuality);
                     args.add("SORT=" + sort);
-                    args.add("BARCODE_EXTRACT=" + otfBarcodeExtract);
+                    args.add("MATCH_BARCODES_INLINE=" + otfBarcodeExtract);
                     args.add("METRICS_FILE=" + metricsFile);
 
                     if (tile != null) {

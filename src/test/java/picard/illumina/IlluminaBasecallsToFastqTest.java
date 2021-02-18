@@ -120,17 +120,17 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
 
     @Test
     public void testDeMultiplexed() throws Exception {
-        runStandardTest(1, "multiplexedBarcode.", "mp_barcode.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, 7, 0.038889);
+        runStandardTest(1, "multiplexedBarcode.", "mp_barcode.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, 7, 0.04);
     }
 
     @Test
     public void testDeMultiplexedWithIndex() throws Exception {
-        runStandardTest(1, "multiplexedBarcodeWithIndex.", "mp_barcode.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M, 7, 0.038889);
+        runStandardTest(1, "multiplexedBarcodeWithIndex.", "mp_barcode.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M, 7, 0.04);
     }
 
     @Test
     public void testDeMultiplexedWithtwoIndexes() throws Exception {
-        runStandardTest(1, "multiplexedBarcodeWithTwoIndexes.", "mp_barcode.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M, 7, 0.038889);
+        runStandardTest(1, "multiplexedBarcodeWithTwoIndexes.", "mp_barcode.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M, 7, 0.04);
     }
 
     @Test
@@ -140,7 +140,7 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
 
     @Test
     public void testCbclConvert() throws Exception {
-        runStandardTest(1, "dualBarcode.", "barcode_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, 1, 0.02);
+        runStandardTest(1, "dualBarcode.", "barcode_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, 1, 0.25);
     }
 
     @Test
@@ -210,7 +210,7 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
                             "FLOWCELL_BARCODE=abcdeACXX",
                             "MAX_RECORDS_IN_RAM=1000", //force spill to disk to test encode/decode,
                             "SORT=" + sort,
-                            "BARCODE_EXTRACT=" + otfBarcodeExtract,
+                            "MATCH_BARCODES_INLINE=" + otfBarcodeExtract,
                             "METRICS_FILE=" + metricsFile
                     });
 

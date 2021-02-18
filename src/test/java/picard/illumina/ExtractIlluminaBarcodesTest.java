@@ -34,6 +34,7 @@ import picard.cmdline.CommandLineProgramTest;
 import picard.illumina.parser.*;
 import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
 import picard.util.BasicInputParser;
+import picard.util.IlluminaUtil;
 
 import java.io.File;
 import java.io.FileReader;
@@ -415,24 +416,21 @@ public class ExtractIlluminaBarcodesTest extends CommandLineProgramTest {
         final byte[][] reads     = new byte[][]{barcodeRead[0].getBytes(), barcodeRead[1].getBytes()};
         final byte[][] qualities = new byte[][]{barcodeQuality[0].getBytes(), barcodeQuality[1].getBytes()};
 
-        Set<BarcodeExtractor.ByteString> barcodesBytes = new HashSet<>(barcodeMetrics.size());
-        for (final BarcodeMetric metric : barcodeMetrics.values()) {
-            barcodesBytes.add(new BarcodeExtractor.ByteString(metric.barcodeBytes));
-        }
+        BarcodeMetric noMatchMetric = new BarcodeMetric(null, null, "NNNNNNNNNNNN", new String[]{"NNNNNN", "NNNNNN"});
 
-        final BarcodeExtractor barcodeExtractor = new BarcodeExtractor(barcodeMetrics,
-                new ConcurrentHashMap<>(),
-                barcodesBytes,
-                null,
+        final BarcodeExtractor barcodeExtractor = new BarcodeExtractor(
+                barcodeMetrics,
+                noMatchMetric,
+                new ReadStructure("10T6B6B10T"),
                 2,
                 2,
                 2,
                 20,
                 DistanceMetric.HAMMING);
 
-        final BarcodeExtractor.BarcodeMatch match = barcodeExtractor.calculateBarcodeMatch(reads, qualities);
+        final BarcodeExtractor.BarcodeMatch match = barcodeExtractor.calculateBarcodeMatch(reads, qualities, false);
 
-        Assert.assertEquals(match.mismatches, expectedMismatches);
-        Assert.assertEquals(match.mismatchesToSecondBest, expectedSecondMismatches);
+        Assert.assertEquals(match.getMismatches(), expectedMismatches);
+        Assert.assertEquals(match.getMismatchesToSecondBest(), expectedSecondMismatches);
     }
 }

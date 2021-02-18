@@ -1,6 +1,7 @@
 package picard.illumina;
 
 import htsjdk.samtools.util.StringUtil;
+import htsjdk.samtools.util.Tuple;
 import picard.illumina.parser.ReadDescriptor;
 import picard.illumina.parser.ReadStructure;
 import picard.illumina.parser.ReadType;
@@ -13,6 +14,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * This class encloses sample input parameters used for any ExtractBarcodesProgram (ExtractIlluminaBarcodes,
+ * IlluminaBasecallsToFastq, IlluminaBasecallsToSam). This is used to parse tab delimited sample information including
+ * barcodes, library names and output prefixes.
+ */
 public class SampleInputParameters {
     /**
      * Column header for the first barcode sequence (preferred).
@@ -35,10 +41,22 @@ public class SampleInputParameters {
     public static final String LIBRARY_NAME_COLUMN = "library_name";
 
 
-    protected static void parseInputFile(final File inputFile,
-                                         final ReadStructure readStructure,
-                                         final Map<String, BarcodeMetric> barcodeToMetrics,
-                                         final List<String> messages) {
+    /**
+     * Parses any one of the following types of files:
+     *
+     * ExtractIlluminaBarcodes      BARCODE_FILE
+     * IlluminaBasecallsToFastq     MULTIPLEX_PARAMS
+     * IlluminaBasecallsToSam       LIBRARY_PARAMS
+     *
+     * This will validate to file format as well as populate a Map of barcodes to metrics.
+     *
+     * @param inputFile         The input file that is being parsed
+     * @param readStructure     The read structure for the reads of the run
+     */
+    protected static Tuple<Map<String, BarcodeMetric>, List<String>> parseInputFile(final File inputFile,
+                                          final ReadStructure readStructure) {
+        List<String> messages = new ArrayList<>();
+        Map<String, BarcodeMetric> barcodeToMetrics = new LinkedHashMap<>();
         try (final TabbedTextFileWithHeaderParser barcodesParser = new TabbedTextFileWithHeaderParser(inputFile)) {
             List<String> validBarcodeColumns = barcodesParser.columnLabels().stream().filter(name -> {
                 boolean isValidPrefix = false;
@@ -96,5 +114,6 @@ public class SampleInputParameters {
                 barcodeToMetrics.put(StringUtil.join("", bcStrings), metric);
             }
         }
+        return new Tuple<>(barcodeToMetrics, messages);
     }
 }
