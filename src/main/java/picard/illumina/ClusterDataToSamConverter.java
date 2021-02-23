@@ -104,7 +104,7 @@ public class ClusterDataToSamConverter implements
      * Constructor
      *
      * @param runBarcode                Used to construct read names.
-     * @param laneToReadGroup               If non-null, set RG attribute on SAMRecord to this.
+     * @param laneToReadGroup           If non-null, set RG attribute on SAMRecord to this.
      * @param readStructure             The expected structure (number of reads and indexes,
      *                                  and their length) in the read.
      * @param adapters                  The list of adapters to check for in the read

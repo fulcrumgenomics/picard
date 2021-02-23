@@ -229,35 +229,31 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
                     String filePrefix = prefix.getName();
                     for (int i = 1; i <= readStructure.templates.length(); ++i) {
                         final String filename = filePrefix + "." + i + ".fastq";
-                        if (sort) {
-                            IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
-                        else {
-                            compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
+                        compareResults(testDataDir, sort, prefix, filename);
                     }
                     for (int i = 1; i <= readStructure.sampleBarcodes.length(); ++i) {
                         final String filename = filePrefix + ".barcode_" + i + ".fastq";
-                        if (sort) {
-                            IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
-                        else {
-                            compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
+                        compareResults(testDataDir, sort, prefix, filename);
                     }
                     for (int i = 1; i <= readStructure.molecularBarcode.length(); ++i) {
                         final String filename = filePrefix + ".index_" + i + ".fastq";
-                        if (sort) {
-                            IOUtil.assertFilesEqual(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
-                        else {
-                            compareFastqs(new File(prefix.getParentFile(), filename), new File(testDataDir, filename));
-                        }
+                        compareResults(testDataDir, sort, prefix, filename);
                     }
                 }
             }
         } finally {
             IOUtil.recursiveDelete(outputDir.toPath());
+        }
+    }
+
+    private void compareResults(File testDataDir, boolean sort, File prefix, String filename) {
+        File actual = new File(prefix.getParentFile(), filename);
+        File expected = new File(testDataDir, filename);
+        if(actual.length() == 0 && expected.length() == 0) return;
+        if (sort) {
+            IOUtil.assertFilesEqual(actual, expected);
+        } else {
+            compareFastqs(actual, expected);
         }
     }
 

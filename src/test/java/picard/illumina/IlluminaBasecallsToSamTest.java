@@ -182,7 +182,7 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
     @DataProvider
     public Object[][] variousConfigurationsData() {
         return new Object[][]{
-         /*      {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, new File(TEST_DATA_DIR.getParentFile(),"sams_with_DS"), null, new int[]{1}},
+                {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, new File(TEST_DATA_DIR.getParentFile(),"sams_with_DS"), null, new int[]{1}},
                 {"multiplexedBarcode.", "library.params", 1, "25T8B25T", BASECALLS_DIR, TEST_DATA_DIR, null, new int[]{1}},
                 {"multiplexedBarcode.", "library.params", 1, "25T8B4M21T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M_INDEX, null, new int[]{1}},
                 {"multiplexedBarcode2.", "library.params", 1, "25T8B4M4M17T", BASECALLS_DIR, TEST_DATA_DIR_WITH_4M4M_INDEX, null, new int[]{1}},
@@ -191,7 +191,7 @@ public class IlluminaBasecallsToSamTest extends CommandLineProgramTest {
                 {"cbclConvert.", "library_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, null, new int[]{1}},
                 {"hiseqxSingleLocs.", "library_double.params", 2, "25T8B8B25T", TEST_DATA_HISEQX_SINGLE_LOCS, HISEQX_TEST_DATA_DIR, null, new int[]{1}},
                 {"hiseqxSingleLocs.", "library_double.params", 2, "25T8B8B25T", TEST_DATA_HISEQX_SINGLE_LOCS, HISEQX_TEST_DATA_DIR, null, new int[]{1}},
-                {"dualBarcode.", "library_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 1101, new int[]{1}},*/
+                {"dualBarcode.", "library_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 1101, new int[]{1}},
                 {"multilane.", "library_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 1101, new int[]{1,2}},
                 {"cbclConvert.", "library_double.params", 2, "151T8B8B151T", TEST_DATA_DIR_WITH_CBCLS, DUAL_CBCL_TEST_DATA_DIR, 1102, new int[]{1}}
         };
