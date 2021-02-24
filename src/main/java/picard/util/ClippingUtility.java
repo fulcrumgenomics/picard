@@ -26,8 +26,10 @@ package picard.util;
 
 import htsjdk.samtools.ReservedTagConstants;
 import htsjdk.samtools.SAMRecord;
+import htsjdk.samtools.fastq.FastqRecord;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.SequenceUtil;
+import picard.PicardException;
 
 /**
  * Utilities to clip the adapter sequence from a SAMRecord read
@@ -115,6 +117,30 @@ public class ClippingUtility {
         }
         return null;
     }
+
+    public static AdapterPair adapterTrimIlluminaSingleRead(final byte[]  record, final int minMatchBases,
+                                                            final double maxErrorRate,
+                                                            final int templateIndex,
+                                                            final AdapterPair ... adapters) {
+        for (AdapterPair adapter : adapters) {
+            int indexOfAdapterSequence;
+            if(templateIndex == 1){
+                indexOfAdapterSequence = findIndexOfClipSequence(
+                    record, adapter.get3PrimeAdapterBytes(), minMatchBases, maxErrorRate);
+            } else if (templateIndex == 2) {
+                indexOfAdapterSequence = findIndexOfClipSequence(
+                        record, adapter.get5PrimeAdapterBytesInReadOrder(), minMatchBases, maxErrorRate);
+            } else {
+                throw new PicardException("Read template index must be 1 or 2");
+            }
+            if (indexOfAdapterSequence != NO_MATCH) {
+                // Convert to a one-based index for storage on the record.
+                return adapter;
+            }
+        }
+        return null;
+    }
+
     /**
      * @deprecated          Use the varargs version.  This no longer returns a warning string..
      */
@@ -223,6 +249,35 @@ public class ClippingUtility {
             }
             if (read2.getReadBases().length > matchedIndex) {
                 read2.setAttribute(ReservedTagConstants.XT, matchedIndex + 1);
+            }
+            return true;
+        }
+        return false;
+    }
+    /**
+     * When an adapter is matched in only one end of a pair, we check it again with
+     * stricter thresholds.  If it still matches, then we trim both ends of the read
+     * at the same location.
+     */
+    private static boolean attemptOneSidedRawMatch(final byte[]  read1,
+                                                final byte[]  read2,
+                                                final int index1,
+                                                final int index2,
+                                                final int stricterMinMatchBases) {
+
+        // Save all the data about the read where we found the adapter match
+        final int matchedIndex = index1 == NO_MATCH ? index2 : index1;
+        final byte[]  matchedRead = index1 == NO_MATCH ? read2 : read1;
+
+
+        // If it still matches with a stricter minimum matched bases, then
+        // clip both reads
+        if (matchedRead.length - matchedIndex >= stricterMinMatchBases) {
+            if (read1.length > matchedIndex) {
+               // read1.setAttribute(ReservedTagConstants.XT, matchedIndex + 1);
+            }
+            if (read2.length > matchedIndex) {
+              //  read2.setAttribute(ReservedTagConstants.XT, matchedIndex + 1);
             }
             return true;
         }

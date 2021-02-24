@@ -29,13 +29,7 @@ import htsjdk.samtools.util.CollectionUtil;
 import htsjdk.samtools.util.SequenceUtil;
 import htsjdk.samtools.util.StringUtil;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -64,7 +58,7 @@ public class AdapterMarker {
 
     // This is AtomicReference because one thread could be matching adapters while the threshold has been crossed in another
     // thread and the array is being replaced.
-    private final AtomicReference<AdapterPair[]> adapters = new AtomicReference<AdapterPair[]>();
+    private final AtomicReference<AdapterPair[]> adapters = new AtomicReference<>();
 
     // All the members below are only accessed within a synchronized block.
     private boolean thresholdReached = false;
@@ -186,6 +180,10 @@ public class AdapterMarker {
         return adapterTrimIlluminaSingleRead(read, minSingleEndMatchBases, maxSingleEndErrorRate);
     }
 
+    public AdapterPair adapterTrimIlluminaSingleRead(final byte[] read, final int templateIndex) {
+        return adapterTrimIlluminaSingleRead(read, minSingleEndMatchBases, maxSingleEndErrorRate, templateIndex);
+    }
+
     public AdapterPair adapterTrimIlluminaPairedReads(final SAMRecord read1, final SAMRecord read2) {
         return adapterTrimIlluminaPairedReads(read1, read2, minPairMatchBases, maxPairErrorRate);
     }
@@ -199,13 +197,31 @@ public class AdapterMarker {
         return ret;
     }
 
+    /**
+     * Overrides defaults for minMatchBases and maxErrorRate
+     */
+    public AdapterPair adapterTrimIlluminaSingleRead(final byte[] read,
+                                                     final int minMatchBases,
+                                                     final double maxErrorRate,
+                                                     int templateIndex) {
+        final AdapterPair ret = ClippingUtility.adapterTrimIlluminaSingleRead(read,
+                minMatchBases,
+                maxErrorRate,
+                templateIndex,
+                adapters.get());
+        if (ret != null && !thresholdReached) {
+            tallyFoundAdapter(ret, false);
+        }
+        return ret;
+    }
+
     private void tallyAndFixAdapters(AdapterPair ret, SAMRecord... reads) {
         if (ret != null && !thresholdReached) {
             if(!preAdapterPrunedRecords.containsKey(ret)) {
                 preAdapterPrunedRecords.put(ret, new ArrayList<>());
             }
             Arrays.stream(reads).forEach(read -> preAdapterPrunedRecords.get(ret).add(read));
-            tallyFoundAdapter(ret);
+            tallyFoundAdapter(ret, true);
         }
     }
 
@@ -245,7 +261,7 @@ public class AdapterMarker {
     /**
      * Keep track of every time an adapter is found, until it is time to prune the list of adapters.
      */
-    private void tallyFoundAdapter(final AdapterPair foundAdapter) {
+    private void tallyFoundAdapter(final AdapterPair foundAdapter, boolean fixPreviousRecords) {
         // If caller does not want adapter pruning, do nothing.
         if (thresholdForSelectingAdaptersToKeep < 1) return;
         synchronized (this) {
@@ -289,7 +305,9 @@ public class AdapterMarker {
                 // Replace the existing list with the pruned list.
                 thresholdReached = true;
                 adapters.set(bestAdapters.toArray(new AdapterPair[bestAdapters.size()]));
-                fixAlreadySeenReads();
+                if (fixPreviousRecords) {
+                    fixAlreadySeenReads();
+                }
             }
         }
     }

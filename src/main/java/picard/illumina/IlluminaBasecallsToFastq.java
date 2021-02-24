@@ -42,8 +42,8 @@ import picard.illumina.parser.ReadData;
 import picard.illumina.parser.ReadStructure;
 import picard.illumina.parser.ReadType;
 import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
-import picard.util.IlluminaUtil;
-import picard.util.TabbedTextFileWithHeaderParser;
+import picard.util.*;
+import picard.util.IlluminaUtil.IlluminaAdapterPair;
 
 import java.io.File;
 import java.io.IOException;
@@ -138,9 +138,18 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             mutex = {"OUTPUT_PREFIX"})
     public File MULTIPLEX_PARAMS;
 
-    @Deprecated
-    @Argument(doc = "Deprecated (No longer used). Which adapters to look for in the read.", optional = true)
-    public List<IlluminaUtil.IlluminaAdapterPair> ADAPTERS_TO_CHECK = null;
+    @Argument(doc = "Which adapters to look for in the read.")
+    public List<IlluminaAdapterPair> ADAPTERS_TO_CHECK = new ArrayList<>(
+            Arrays.asList(IlluminaUtil.IlluminaAdapterPair.INDEXED,
+                    IlluminaUtil.IlluminaAdapterPair.DUAL_INDEXED,
+                    IlluminaUtil.IlluminaAdapterPair.NEXTERA_V2,
+                    IlluminaUtil.IlluminaAdapterPair.FLUIDIGM));
+
+    @Argument(doc = "For specifying adapters other than standard Illumina", optional = true)
+    public String FIVE_PRIME_ADAPTER;
+
+    @Argument(doc = "For specifying adapters other than standard Illumina", optional = true)
+    public String THREE_PRIME_ADAPTER;
 
     @Argument(doc = "The number of threads to run in parallel. If NUM_PROCESSORS = 0, number of cores is automatically set to " +
             "the number of cores available on the machine. If NUM_PROCESSORS < 0, then the number of cores used will" +
@@ -190,6 +199,9 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
     @Argument(shortName = "GZIP", doc = "Compress output FASTQ files using gzip and append a .gz extension to the file names.")
     public boolean COMPRESS_OUTPUTS = false;
 
+    @Argument(doc = "The quality to use as a threshold for trimming.", optional = true)
+    public Integer TRIMMING_QUALITY = null;
+
     /**
      * Simple switch to control the read name format to emit.
      */
@@ -203,6 +215,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
     private static final Log log = Log.getInstance(IlluminaBasecallsToFastq.class);
     private final FastqWriterFactory fastqWriterFactory = new FastqWriterFactory();
     private ReadNameEncoder readNameEncoder;
+    final List<AdapterPair> adapters = new ArrayList<>(ADAPTERS_TO_CHECK);
 
     @Override
     protected int doWork() {
@@ -230,8 +243,8 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             errors.add("FLOWCELL_BARCODE is required when using Casava1.8-style read name headers.");
         }
 
-        if (ADAPTERS_TO_CHECK != null) {
-            log.warn("ADAPTERS_TO_CHECK is not used");
+        if ((FIVE_PRIME_ADAPTER == null) != (THREE_PRIME_ADAPTER == null)) {
+            errors.add("THREE_PRIME_ADAPTER and FIVE_PRIME_ADAPTER must either both be null or both be set.");
         }
 
         if (errors.isEmpty()) {
@@ -267,6 +280,11 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         } else {
             populateWritersFromMultiplexParams();
             demultiplex = true;
+        }
+
+        // Combine any adapters and custom adapter pairs from the command line into an array for use in clipping
+        if (FIVE_PRIME_ADAPTER != null && THREE_PRIME_ADAPTER != null) {
+            adapters.add(new CustomAdapterPair(FIVE_PRIME_ADAPTER, THREE_PRIME_ADAPTER));
         }
 
         BasecallsConverterBuilder<ClusterData> converterBuilder = new BasecallsConverterBuilder<>(BASECALLS_DIR, LANE, readStructure, sampleBarcodeClusterWriterMap)
@@ -391,7 +409,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         }
 
 
-        return new AsyncClusterWriter(new ClusterToFastqWriter(templateFiles, sampleBarcodeFiles, molecularBarcodeFiles), 1024);
+        return new AsyncClusterWriter(new ClusterToFastqWriter(templateFiles, sampleBarcodeFiles, molecularBarcodeFiles, TRIMMING_QUALITY, adapters), 1024);
     }
 
     /**
@@ -429,10 +447,15 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         private final boolean appendTemplateNumber;
         private final boolean appendMolecularBarcodeNumber;
         private final int numReads;
+        private final Integer trimmingQuality;
+        private final AdapterMarker adapterMarker;
 
         public ClusterToFastqWriter(final File[] templateFiles,
                                     final File[] sampleBarcodeFiles,
-                                    final File[] molecularBarcodeFiles) {
+                                    final File[] molecularBarcodeFiles,
+                                    final Integer trimmingQuality,
+                                    final List<AdapterPair> adapters
+        ) {
 
             this.templateOut = Arrays.stream(templateFiles).map(this::makeWriter).toArray(OutputStream[]::new);
             this.sampleBarcodeOut = Arrays.stream(sampleBarcodeFiles).map(this::makeWriter).toArray(OutputStream[]::new);
@@ -440,6 +463,12 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             this.appendTemplateNumber = this.templateOut.length > 1;
             this.appendMolecularBarcodeNumber = this.molecularBarcodeOut.length > 1;
             this.numReads = templateOut.length + sampleBarcodeOut.length + molecularBarcodeOut.length;
+            this.trimmingQuality = trimmingQuality;
+            if (adapters.isEmpty()) {
+                this.adapterMarker = null;
+            } else {
+                this.adapterMarker = new AdapterMarker(adapters.toArray(new AdapterPair[0]));
+            }
         }
 
         private OutputStream makeWriter(final File file) {
@@ -486,17 +515,48 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                         throw new IllegalStateException("Read type other than T/B/M encountered.");
                 }
 
-                writeSingle(out, name, read);
+                writeSingle(out, name, read, templateIndex);
             }
         }
 
         /**
          * Writes out a single read to a single FASTQ's output stream.
          */
-        private void writeSingle(final OutputStream out, final String name, final ReadData read) {
+        private void writeSingle(final OutputStream out, final String name, final ReadData read, int templateIndex) {
             try {
-                final byte[] bases = read.getBases();
-                final byte[] quals = read.getQualities();
+                byte[] bases = read.getBases();
+                byte[] quals = read.getQualities();
+
+                if (adapterMarker != null) {
+                    AdapterPair adapterPair = adapterMarker.adapterTrimIlluminaSingleRead(bases, templateIndex);
+                    if(adapterPair != null) {
+                        int index = bases.length - 1;
+                        if (templateIndex == 1) {
+                            index = ClippingUtility.findIndexOfClipSequence(
+                                    bases, adapterPair.get3PrimeAdapterBytes(), ClippingUtility.MIN_MATCH_BASES, ClippingUtility.MAX_ERROR_RATE);
+                        } else if (templateIndex == 2) {
+                            index = ClippingUtility.findIndexOfClipSequence(
+                                    bases, adapterPair.get5PrimeAdapterBytesInReadOrder(), ClippingUtility.MIN_MATCH_BASES, ClippingUtility.MAX_ERROR_RATE);
+                        }
+                        // Don't write zero length reads if the entire read is trimmed
+                        if (index == 0) {
+                            return;
+                        }
+                        quals = Arrays.copyOfRange(quals, 0, index);
+                        bases = Arrays.copyOfRange(bases, 0, index);
+                    }
+                }
+
+                if(trimmingQuality != null) {
+                    int index = TrimmingUtil.findQualityTrimPoint(quals, trimmingQuality);
+                    // Don't write zero length reads if the entire read is trimmed
+                    if (index == 0) {
+                        return;
+                    }
+                    quals = Arrays.copyOfRange(quals, 0, index);
+                    bases = Arrays.copyOfRange(bases, 0, index);
+                }
+
                 final int len = bases.length;
                 for (int i = 0; i < len; ++i) {
                     quals[i] = (byte) SAMUtils.phredToFastq(quals[i]);
