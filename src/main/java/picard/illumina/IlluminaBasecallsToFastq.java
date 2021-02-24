@@ -260,6 +260,11 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
     private void initialize() {
         fastqWriterFactory.setCreateMd5(CREATE_MD5_FILE);
 
+        // Combine any adapters and custom adapter pairs from the command line into an array for use in clipping
+        if (FIVE_PRIME_ADAPTER != null && THREE_PRIME_ADAPTER != null) {
+            adapters.add(new CustomAdapterPair(FIVE_PRIME_ADAPTER, THREE_PRIME_ADAPTER));
+        }
+
         switch (READ_NAME_FORMAT) {
             case CASAVA_1_8:
                 readNameEncoder = new Casava18ReadNameEncoder(MACHINE_NAME, RUN_BARCODE, FLOWCELL_BARCODE);
@@ -280,11 +285,6 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         } else {
             populateWritersFromMultiplexParams();
             demultiplex = true;
-        }
-
-        // Combine any adapters and custom adapter pairs from the command line into an array for use in clipping
-        if (FIVE_PRIME_ADAPTER != null && THREE_PRIME_ADAPTER != null) {
-            adapters.add(new CustomAdapterPair(FIVE_PRIME_ADAPTER, THREE_PRIME_ADAPTER));
         }
 
         BasecallsConverterBuilder<ClusterData> converterBuilder = new BasecallsConverterBuilder<>(BASECALLS_DIR, LANE, readStructure, sampleBarcodeClusterWriterMap)
