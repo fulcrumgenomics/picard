@@ -541,6 +541,16 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                 byte[] bases = read.getBases();
                 byte[] quals = read.getQualities();
 
+                if (trimmingQuality != null) {
+                    int index = TrimmingUtil.findQualityTrimPoint(quals, trimmingQuality);
+                    // Don't write zero length reads if the entire read is trimmed
+                    if (index == 0) {
+                        return;
+                    }
+                    quals = Arrays.copyOfRange(quals, 0, index);
+                    bases = Arrays.copyOfRange(bases, 0, index);
+                }
+
                 if (adapterMarker != null) {
                     AdapterPair adapterPair = adapterMarker.findAdapterPairForSingleRead(bases, templateIndex);
                     if (adapterPair != null) {
@@ -559,16 +569,6 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                         quals = Arrays.copyOfRange(quals, 0, index);
                         bases = Arrays.copyOfRange(bases, 0, index);
                     }
-                }
-
-                if (trimmingQuality != null) {
-                    int index = TrimmingUtil.findQualityTrimPoint(quals, trimmingQuality);
-                    // Don't write zero length reads if the entire read is trimmed
-                    if (index == 0) {
-                        return;
-                    }
-                    quals = Arrays.copyOfRange(quals, 0, index);
-                    bases = Arrays.copyOfRange(bases, 0, index);
                 }
 
                 final int len = bases.length;
