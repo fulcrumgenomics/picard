@@ -12,7 +12,9 @@ import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 
 /**
@@ -64,11 +66,12 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             final boolean ignoreUnexpectedBarcodes,
             final boolean applyEamssFiltering,
             final boolean includeNonPfReads,
+            final BarcodeExtractor barcodeExtractor,
             final AsyncWriterPool writerPool
     ) {
         super(basecallsDir, barcodesDir, lanes, readStructure, barcodeRecordWriterMap, demultiplex,
                 firstTile, tileLimit, bclQualityEvaluationStrategy,
-                ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, writerPool);
+                ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, barcodeExtractor, writerPool);
     }
 
     /**
@@ -82,6 +85,16 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
      */
     @Override
     public void processTilesAndWritePerSampleOutputs(final Set<String> barcodes) throws IOException {
+        Map<String, BarcodeMetric> metrics = null;
+        BarcodeMetric noMatch = null;
+        if(barcodeExtractor != null) {
+            metrics = new LinkedHashMap<>(barcodeExtractor.getMetrics().size());
+            for (final String key : barcodeExtractor.getMetrics().keySet()) {
+                metrics.put(key, barcodeExtractor.getMetrics().get(key).copy());
+            }
+
+            noMatch = barcodeExtractor.getNoMatchMetric().copy();
+        }
         for(IlluminaDataProviderFactory laneFactory : laneFactories) {
             for (Integer tile : tiles) {
                 final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tile);
@@ -89,12 +102,14 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                 while (dataProvider.hasNext()) {
                     final ClusterData cluster = dataProvider.next();
                     if (includeNonPfReads || cluster.isPf()) {
-                        barcodeRecordWriterMap.get(cluster.getMatchedBarcode()).write(converter.convertClusterToOutputRecord(cluster));
+                        final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
+                        barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
                         progressLogger.record(null, 0);
                     }
                 }
                 dataProvider.close();
             }
+            updateMetrics(metrics, noMatch);
         }
         closeWriters();
     }

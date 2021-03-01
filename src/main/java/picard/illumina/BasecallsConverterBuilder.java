@@ -40,6 +40,7 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
     private boolean applyEamssFiltering = false;
     private boolean includeNonPfReads = false;
     private AsyncWriterPool writerPool = null;
+    private BarcodeExtractor barcodeExtractor = null;
 
     /**
      * Constructs a new builder used for creating BasecallsConverter objects.
@@ -94,12 +95,12 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
                     firstTile, tileLimit, outputRecordComparator,
                     codecPrototype,
                     outputRecordClass, bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering,
-                    includeNonPfReads, writerPool);
+                    includeNonPfReads, barcodeExtractor, writerPool);
         } else {
             return new UnsortedBasecallsConverter<>(basecallsDir, barcodesDir, lanes, readStructure,
                     barcodeRecordWriterMap, demultiplex, firstTile, tileLimit,
                     bclQualityEvaluationStrategy, ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads,
-                    writerPool);
+                    barcodeExtractor, writerPool);
         }
     }
 
@@ -201,7 +202,7 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
      * @return A builder that will create a converter with barcodesDir set.
      */
     public BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> barcodesDir(File barcodesDir) {
-        this.barcodesDir = (barcodesDir == null) ? basecallsDir : barcodesDir;
+        this.barcodesDir = barcodesDir;
         return this;
     }
 
@@ -219,6 +220,11 @@ public class BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> {
 
     public BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> withAsyncWriterPool(AsyncWriterPool writerPool) {
         this.writerPool = writerPool;
+        return this;
+    }
+
+    public BasecallsConverterBuilder<CLUSTER_OUTPUT_RECORD> withBarcodeExtractor(BarcodeExtractor barcodeExtractor) {
+        this.barcodeExtractor = barcodeExtractor;
         return this;
     }
 }
