@@ -201,7 +201,7 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
 
     @Test
     public void testMultipleLanes() throws Exception {
-        runStandardTest(new int[]{1, 2}, "dualBarcode.", "barcode_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 2, 0.033333);
+        runStandardTest(new int[]{1, 2}, "dualBarcode.", "barcode_double.params", 2, "25T8B8B25T", DUAL_BASECALLS_DIR, DUAL_TEST_DATA_DIR, 4, 0.033333);
     }
 
     private void compareFastqs(File actual, File expected) {
@@ -256,7 +256,7 @@ public class IlluminaBasecallsToFastqTest extends CommandLineProgramTest {
                 laneArgs[i] = "LANE=" + lanes[i];
             }
 
-            for (final boolean sort : new boolean[]{false, true}) {
+            for (final boolean sort : new boolean[]{true, false}) {
                 for (final boolean otfBarcodeExtract : new boolean[]{true, false}) {
                     final File metricsFile = File.createTempFile("ibtf.", ".metrics");
                     metricsFile.deleteOnExit();

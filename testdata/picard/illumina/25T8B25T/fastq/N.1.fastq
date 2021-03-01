@@ -1,7 +1,7 @@
-@machine1:HiMom:abcdeACXX:1:1101:1047:2122 1:Y:0:
-NCTAANGNACTNTGNGTGTGCNNNN
+@machine1:HiMom:abcdeACXX:1:1101:1031:2224 1:Y:0:
+NAATANNNNNNNNNNNNTNNNNNNN
 +
-#0;@@#4#3@@#3@#2<@@@@####
+#0;@@####################
 @machine1:HiMom:abcdeACXX:1:1101:1039:2147 1:Y:0:
 NCCAANGNNGGNNNNATGTAANNNN
 +
@@ -10,11 +10,11 @@ NCCAANGNNGGNNNNATGTAANNNN
 NTGCCNGNGTTNCGNGGTCTTNNNN
 +
 #4;@@####################
+@machine1:HiMom:abcdeACXX:1:1101:1047:2122 1:Y:0:
+NCTAANGNACTNTGNGTGTGCNNNN
++
+#0;@@#4#3@@#3@#2<@@@@####
 @machine1:HiMom:abcdeACXX:1:1101:1048:2197 1:Y:0:
 NCTCCNGNTCANCANGTGGAGNNNN
 +
 #0;?@####################
-@machine1:HiMom:abcdeACXX:1:1101:1031:2224 1:Y:0:
-NAATANNNNNNNNNNNNTNNNNNNN
-+
-#0;@@####################
