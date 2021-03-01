@@ -422,7 +422,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         }
     }
 
-    private final class AsyncClusterWriter extends AbstractAsyncWriter<ClusterData> implements BasecallsConverter.ConvertedClusterDataWriter<ClusterData>  {
+    private final class AsyncClusterWriter extends AbstractAsyncWriter<ClusterData> implements BasecallsConverter.ConvertedClusterDataWriter<ClusterData> {
         private final ClusterToFastqWriter writer;
 
         public AsyncClusterWriter(final ClusterToFastqWriter out, final int queueSize) {
@@ -430,10 +430,22 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
             this.writer = out;
         }
 
-        @Override protected String getThreadNamePrefix() { return "FastqWriterThread-"; }
-        @Override protected void synchronouslyWrite(final ClusterData item) { this.writer.write(item); }
-        @Override protected void synchronouslyClose() { this.writer.close(); }
+        @Override
+        protected String getThreadNamePrefix() {
+            return "FastqWriterThread-";
+        }
+
+        @Override
+        protected void synchronouslyWrite(final ClusterData item) {
+            this.writer.write(item);
+        }
+
+        @Override
+        protected void synchronouslyClose() {
+            this.writer.close();
+        }
     }
+
     /**
      * An optimized writer for writing ClusterData directly to a set of Fastq files.
      */
@@ -480,7 +492,9 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                 } else {
                     os = IOUtil.maybeBufferOutputStream(os);
                 }
-                if (Defaults.CREATE_MD5) os = new Md5CalculatingOutputStream(os, IOUtil.addExtension(outputPath, ".md5"));
+                if (Defaults.CREATE_MD5) {
+                    os = new Md5CalculatingOutputStream(os, IOUtil.addExtension(outputPath, ".md5"));
+                }
                 return os;
             } catch (final IOException ioe) {
                 throw new RuntimeIOException("Error opening file: " + outputPath.toUri(), ioe);
@@ -528,8 +542,8 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                 byte[] quals = read.getQualities();
 
                 if (adapterMarker != null) {
-                    AdapterPair adapterPair = adapterMarker.adapterTrimIlluminaSingleRead(bases, templateIndex);
-                    if(adapterPair != null) {
+                    AdapterPair adapterPair = adapterMarker.findAdapterPairForSingleRead(bases, templateIndex);
+                    if (adapterPair != null) {
                         int index = bases.length - 1;
                         if (templateIndex == 1) {
                             index = ClippingUtility.findIndexOfClipSequence(
@@ -547,7 +561,7 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
                     }
                 }
 
-                if(trimmingQuality != null) {
+                if (trimmingQuality != null) {
                     int index = TrimmingUtil.findQualityTrimPoint(quals, trimmingQuality);
                     // Don't write zero length reads if the entire read is trimmed
                     if (index == 0) {
@@ -638,8 +652,11 @@ public class IlluminaBasecallsToFastq extends CommandLineProgram {
         @Override
         public ClusterData decode() {
             int numReads;
-            try { numReads = this.binaryCodec.readInt(); }
-            catch (final RuntimeEOFException e) { return null; }
+            try {
+                numReads = this.binaryCodec.readInt();
+            } catch (final RuntimeEOFException e) {
+                return null;
+            }
 
             ReadData[] readData = new ReadData[numReads];
             ClusterData clusterData = new ClusterData(readData);

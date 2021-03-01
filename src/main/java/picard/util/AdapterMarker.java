@@ -38,8 +38,8 @@ import java.util.stream.Stream;
  * this class implements two heuristics to reduce computation:
  * - Adapter sequences are truncated, and then any adapter pairs that become identical after truncation are collapsed into a single pair.
  * - After a specified number of reads with adapter sequence has been seen, prune the list of adapter pairs to include only the most
- *   frequently seen adapters.  For a flowcell, there should only be a single adapter pair found.
- *
+ * frequently seen adapters.  For a flowcell, there should only be a single adapter pair found.
+ * <p>
  * Note that the AdapterPair object returned by all the adapterTrim* methods will not be one of the original AdapterPairs
  * passed to the ctor, but rather will be one of the truncated copies.
  */
@@ -68,8 +68,10 @@ public class AdapterMarker {
     //Store all the sam records we have seen prior to choosing an adapter so that we can go back and fix the ones
     //that have clipping tags for adapters that were not chosen.
     private Map<AdapterPair, List<SAMRecord>> preAdapterPrunedRecords = new HashMap<>();
+
     /**
      * Truncates adapters to DEFAULT_ADAPTER_LENGTH
+     *
      * @param originalAdapters These should be in order from longest & most likely to shortest & least likely.
      */
     public AdapterMarker(final AdapterPair... originalAdapters) {
@@ -77,7 +79,7 @@ public class AdapterMarker {
     }
 
     /**
-     * @param adapterLength Truncate adapters to this length.
+     * @param adapterLength    Truncate adapters to this length.
      * @param originalAdapters These should be in order from longest & most likely to shortest & least likely.
      */
     public AdapterMarker(final int adapterLength, final AdapterPair... originalAdapters) {
@@ -117,6 +119,7 @@ public class AdapterMarker {
 
     /**
      * When this number of adapters have been matched, discard the least-frequently matching ones.
+     *
      * @param thresholdForSelectingAdaptersToKeep set to -1 to never discard any adapters.
      */
     public synchronized AdapterMarker setThresholdForSelectingAdaptersToKeep(final int thresholdForSelectingAdaptersToKeep) {
@@ -129,7 +132,6 @@ public class AdapterMarker {
     }
 
     /**
-     *
      * @param minSingleEndMatchBases When marking a single-end read, adapter must match at least this many bases.
      */
     public synchronized AdapterMarker setMinSingleEndMatchBases(final int minSingleEndMatchBases) {
@@ -142,7 +144,6 @@ public class AdapterMarker {
     }
 
     /**
-     *
      * @param minPairMatchBases When marking a paired-end read, adapter must match at least this many bases.
      */
     public synchronized AdapterMarker setMinPairMatchBases(final int minPairMatchBases) {
@@ -180,8 +181,14 @@ public class AdapterMarker {
         return adapterTrimIlluminaSingleRead(read, minSingleEndMatchBases, maxSingleEndErrorRate);
     }
 
-    public AdapterPair adapterTrimIlluminaSingleRead(final byte[] read, final int templateIndex) {
-        return adapterTrimIlluminaSingleRead(read, minSingleEndMatchBases, maxSingleEndErrorRate, templateIndex);
+    /**
+     * Return the adapter to be trimmed from a read represented as an array of bytes[]
+     * @param read The byte array of read data
+     * @param templateIndex The paired index of the reads (1 or 2, 1 for single ended reads)
+     * @return The adapter pair that matched the read.
+     */
+    public AdapterPair findAdapterPairForSingleRead(final byte[] read, final int templateIndex) {
+        return findAdapterPairForSingleRead(read, minSingleEndMatchBases, maxSingleEndErrorRate, templateIndex);
     }
 
     public AdapterPair adapterTrimIlluminaPairedReads(final SAMRecord read1, final SAMRecord read2) {
@@ -198,13 +205,18 @@ public class AdapterMarker {
     }
 
     /**
-     * Overrides defaults for minMatchBases and maxErrorRate
+     * Return the adapter to be trimmed from a read represented as an array of bytes[]
+     * @param read The byte array of read data
+     * @param minMatchBases The minimum number of base matches required for adapter matching
+     * @param maxErrorRate The maximum error rate allowed for adapter matching
+     * @param templateIndex The paired index of the reads (1 or 2, 1 for single ended reads)
+     * @return The adapter pair that matched the read or null
      */
-    public AdapterPair adapterTrimIlluminaSingleRead(final byte[] read,
-                                                     final int minMatchBases,
-                                                     final double maxErrorRate,
-                                                     int templateIndex) {
-        final AdapterPair ret = ClippingUtility.adapterTrimIlluminaSingleRead(read,
+    public AdapterPair findAdapterPairForSingleRead(final byte[] read,
+                                                    final int minMatchBases,
+                                                    final double maxErrorRate,
+                                                    int templateIndex) {
+        final AdapterPair ret = ClippingUtility.findAdapterPairForSingleRead(read,
                 minMatchBases,
                 maxErrorRate,
                 templateIndex,
@@ -217,7 +229,7 @@ public class AdapterMarker {
 
     private void tallyAndFixAdapters(AdapterPair ret, SAMRecord... reads) {
         if (ret != null && !thresholdReached) {
-            if(!preAdapterPrunedRecords.containsKey(ret)) {
+            if (!preAdapterPrunedRecords.containsKey(ret)) {
                 preAdapterPrunedRecords.put(ret, new ArrayList<>());
             }
             Arrays.stream(reads).forEach(read -> preAdapterPrunedRecords.get(ret).add(read));
@@ -229,13 +241,15 @@ public class AdapterMarker {
      * Overrides defaults for minMatchBases and maxErrorRate
      */
     public AdapterPair adapterTrimIlluminaPairedReads(final SAMRecord read1, final SAMRecord read2,
-                                                             final int minMatchBases, final double maxErrorRate) {
+                                                      final int minMatchBases, final double maxErrorRate) {
         final AdapterPair ret = ClippingUtility.adapterTrimIlluminaPairedReads(read1, read2, minMatchBases, maxErrorRate, adapters.get());
         tallyAndFixAdapters(ret, read1, read2);
         return ret;
     }
 
-    /** For unit testing only */
+    /**
+     * For unit testing only
+     */
     AdapterPair[] getAdapters() {
         return adapters.get();
     }
@@ -327,7 +341,7 @@ public class AdapterMarker {
     private static final class TruncatedAdapterPair implements AdapterPair {
         String name;
         final String fivePrime, threePrime, fivePrimeReadOrder;
-        final byte[]  fivePrimeBytes, threePrimeBytes, fivePrimeReadOrderBytes;
+        final byte[] fivePrimeBytes, threePrimeBytes, fivePrimeReadOrderBytes;
 
         private TruncatedAdapterPair(final String name, final String threePrimeReadOrder, final String fivePrimeReadOrder) {
             this.name = name;
@@ -339,16 +353,41 @@ public class AdapterMarker {
             this.fivePrimeBytes = StringUtil.stringToBytes(this.fivePrime);
         }
 
-        public String get3PrimeAdapter(){ return threePrime; }
-        public String get5PrimeAdapter(){ return fivePrime; }
-        public String get3PrimeAdapterInReadOrder(){ return threePrime; }
-        public String get5PrimeAdapterInReadOrder() { return fivePrimeReadOrder; }
-        public byte[] get3PrimeAdapterBytes() { return threePrimeBytes; }
-        public byte[] get5PrimeAdapterBytes() { return fivePrimeBytes; }
-        public byte[] get3PrimeAdapterBytesInReadOrder() { return threePrimeBytes; }
-        public byte[] get5PrimeAdapterBytesInReadOrder()  { return fivePrimeReadOrderBytes; }
+        public String get3PrimeAdapter() {
+            return threePrime;
+        }
 
-        public String getName() { return this.name; }
+        public String get5PrimeAdapter() {
+            return fivePrime;
+        }
+
+        public String get3PrimeAdapterInReadOrder() {
+            return threePrime;
+        }
+
+        public String get5PrimeAdapterInReadOrder() {
+            return fivePrimeReadOrder;
+        }
+
+        public byte[] get3PrimeAdapterBytes() {
+            return threePrimeBytes;
+        }
+
+        public byte[] get5PrimeAdapterBytes() {
+            return fivePrimeBytes;
+        }
+
+        public byte[] get3PrimeAdapterBytesInReadOrder() {
+            return threePrimeBytes;
+        }
+
+        public byte[] get5PrimeAdapterBytesInReadOrder() {
+            return fivePrimeReadOrderBytes;
+        }
+
+        public String getName() {
+            return this.name;
+        }
 
         public void setName(final String name) {
             this.name = name;
