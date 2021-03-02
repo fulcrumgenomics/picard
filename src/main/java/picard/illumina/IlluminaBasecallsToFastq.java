@@ -211,7 +211,7 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
     private ReadNameEncoder readNameEncoder;
     boolean demultiplex;
     private AsyncWriterPool writerPool;
-    final List<AdapterPair> adapters = new ArrayList<>(ADAPTERS_TO_CHECK);
+    private List<AdapterPair> adapters;
 
     @Override
     protected int doWork() {
@@ -262,7 +262,7 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
         }
 
         if (ADAPTERS_TO_CHECK != null) {
-            log.warn("ADAPTERS_TO_CHECK is not used");
+            adapters = new ArrayList<>(ADAPTERS_TO_CHECK);
         }
         String[] superErrors = super.customCommandLineValidation();
 
