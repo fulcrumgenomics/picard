@@ -25,8 +25,7 @@ package picard.illumina;
 
 import htsjdk.io.AsyncWriterPool;
 import htsjdk.io.Writer;
-import htsjdk.samtools.Defaults;
-import htsjdk.samtools.SAMUtils;
+import htsjdk.samtools.fastq.FastqRecord;
 import htsjdk.samtools.fastq.FastqWriterFactory;
 import htsjdk.samtools.util.*;
 import org.broadinstitute.barclay.argparser.Argument;
@@ -50,11 +49,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.stream.Collectors;
 
 @CommandLineProgramProperties(
         summary = IlluminaBasecallsToFastq.USAGE_SUMMARY + IlluminaBasecallsToFastq.USAGE_DETAILS,
@@ -311,8 +308,7 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
                 .withApplyEamssFiltering(APPLY_EAMSS_FILTER)
                 .withIncludeNonPfReads(INCLUDE_NON_PF_READS)
                 .withIgnoreUnexpectedBarcodes(IGNORE_UNEXPECTED_BARCODES)
-                .withBclQualityEvaluationStrategy(bclQualityEvaluationStrategy)
-                .withAsyncWriterPool(writerPool);
+                .withBclQualityEvaluationStrategy(bclQualityEvaluationStrategy);
 
         if(MATCH_BARCODES_INLINE && demultiplex){
             converterBuilder = converterBuilder.withBarcodeExtractor(createBarcodeExtractor()).barcodesDir(null);
@@ -430,7 +426,7 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
         }
 
         int queueSize = (MAX_RECORDS_IN_RAM / 2) / numSamples;
-        return writerPool.pool(new ClusterToFastqWriter(templateFiles, sampleBarcodeFiles, molecularBarcodeFiles, TRIMMING_QUALITY, adapters), new LinkedBlockingQueue<>(queueSize), (int) (queueSize * 0.5));
+        return new ClusterToFastqWriter(templateFiles, sampleBarcodeFiles, molecularBarcodeFiles, TRIMMING_QUALITY, adapters, queueSize);
     }
 
     /**
@@ -447,12 +443,10 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
      * An optimized writer for writing ClusterData directly to a set of Fastq files.
      */
     private final class ClusterToFastqWriter implements BasecallsConverter.ConvertedClusterDataWriter<ClusterData> {
-        public static final char NEW_LINE = '\n';
-        public static final char AT_SYMBOL = '@';
-        public static final char PLUS = '+';
-        private final OutputStream[] templateOut;
-        private final OutputStream[] sampleBarcodeOut;
-        private final OutputStream[] molecularBarcodeOut;
+
+        private final List<Writer<FastqRecord>> templateOut;
+        private final List<Writer<FastqRecord>> sampleBarcodeOut;
+        private final List<Writer<FastqRecord>> molecularBarcodeOut;
         private final boolean appendTemplateNumber;
         private final boolean appendMolecularBarcodeNumber;
         private final int numReads;
@@ -463,38 +457,21 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
                                     final File[] sampleBarcodeFiles,
                                     final File[] molecularBarcodeFiles,
                                     final Integer trimmingQuality,
-                                    final List<AdapterPair> adapters
+                                    final List<AdapterPair> adapters,
+                                    final int queueSize
         ) {
-
-            this.templateOut = Arrays.stream(templateFiles).map(this::makeWriter).toArray(OutputStream[]::new);
-            this.sampleBarcodeOut = Arrays.stream(sampleBarcodeFiles).map(this::makeWriter).toArray(OutputStream[]::new);
-            this.molecularBarcodeOut = Arrays.stream(molecularBarcodeFiles).map(this::makeWriter).toArray(OutputStream[]::new);
-            this.appendTemplateNumber = this.templateOut.length > 1;
-            this.appendMolecularBarcodeNumber = this.molecularBarcodeOut.length > 1;
-            this.numReads = templateOut.length + sampleBarcodeOut.length + molecularBarcodeOut.length;
+            FastqWriterFactory writerFactory = new FastqWriterFactory();
+            this.templateOut = Arrays.stream(templateFiles).map(out -> writerPool.pool(writerFactory.newWriter(out), new LinkedBlockingQueue<>(queueSize), (int) (queueSize * 0.5))).collect(Collectors.toList());
+            this.sampleBarcodeOut = Arrays.stream(sampleBarcodeFiles).map(out -> writerPool.pool(writerFactory.newWriter(out), new LinkedBlockingQueue<>(queueSize), (int) (queueSize * 0.5))).collect(Collectors.toList());
+            this.molecularBarcodeOut = Arrays.stream(molecularBarcodeFiles).map(out -> writerPool.pool(writerFactory.newWriter(out), new LinkedBlockingQueue<>(queueSize), (int) (queueSize * 0.5))).collect(Collectors.toList());
+            this.appendTemplateNumber = this.templateOut.size() > 1;
+            this.appendMolecularBarcodeNumber = this.molecularBarcodeOut.size() > 1;
+            this.numReads = templateOut.size() + sampleBarcodeOut.size() + molecularBarcodeOut.size();
             this.trimmingQuality = trimmingQuality;
             if (adapters.isEmpty()) {
                 this.adapterMarker = null;
             } else {
                 this.adapterMarker = new AdapterMarker(adapters.toArray(new AdapterPair[0]));
-            }
-        }
-
-        private OutputStream makeWriter(final File file) {
-            Path outputPath = file.toPath();
-            try {
-                OutputStream os = Files.newOutputStream(outputPath);
-                if (IOUtil.hasGzipFileExtension(outputPath)) {
-                    os = new BlockCompressedOutputStream(os, (File) null, COMPRESSION_LEVEL);
-                } else {
-                    os = IOUtil.maybeBufferOutputStream(os);
-                }
-                if (Defaults.CREATE_MD5) {
-                    os = new Md5CalculatingOutputStream(os, IOUtil.addExtension(outputPath, ".md5"));
-                }
-                return os;
-            } catch (final IOException ioe) {
-                throw new RuntimeIOException("Error opening file: " + outputPath.toUri(), ioe);
             }
         }
 
@@ -506,20 +483,20 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
 
             for (int i = 0; i < this.numReads; ++i) {
                 final ReadData read = rec.getRead(i);
-                final OutputStream out;
+                final Writer<FastqRecord> out;
                 final String name;
 
                 switch (read.getReadType()) {
                     case T:
-                        out = templateOut[templateIndex++];
+                        out = templateOut.get(templateIndex++);
                         name = readNameEncoder.generateReadName(rec, appendTemplateNumber ? templateIndex : null);
                         break;
                     case B:
-                        out = sampleBarcodeOut[sampleBarcodeIndex++];
+                        out = sampleBarcodeOut.get(sampleBarcodeIndex++);
                         name = readNameEncoder.generateReadName(rec, null);
                         break;
                     case M:
-                        out = molecularBarcodeOut[molecularBarcodeIndex++];
+                        out = molecularBarcodeOut.get(molecularBarcodeIndex++);
                         name = readNameEncoder.generateReadName(rec, appendMolecularBarcodeNumber ? molecularBarcodeIndex : null);
                         break;
                     default:
@@ -533,11 +510,11 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
         /**
          * Writes out a single read to a single FASTQ's output stream.
          */
-        private void writeSingle(final OutputStream out, final String name, final ReadData read, int templateIndex) {
-            try {
-                byte[] bases = read.getBases();
-                byte[] quals = read.getQualities();
+        private void writeSingle(final Writer<FastqRecord> out, final String name, final ReadData read, int templateIndex) {
+            byte[] bases = read.getBases();
+            byte[] quals = read.getQualities();
 
+            if(read.getReadType() == ReadType.T) {
                 if (trimmingQuality != null) {
                     int index = TrimmingUtil.findQualityTrimPoint(quals, trimmingQuality);
                     // Don't write zero length reads if the entire read is trimmed
@@ -567,32 +544,16 @@ public class IlluminaBasecallsToFastq extends ExtractBarcodesProgram {
                         bases = Arrays.copyOfRange(bases, 0, index);
                     }
                 }
-
-                final int len = bases.length;
-                for (int i = 0; i < len; ++i) {
-                    quals[i] = (byte) SAMUtils.phredToFastq(quals[i]);
-                }
-
-                out.write(AT_SYMBOL);
-                out.write(name.getBytes(StandardCharsets.UTF_8));
-                out.write(NEW_LINE);
-                out.write(bases);
-                out.write(NEW_LINE);
-                out.write(PLUS);
-                out.write(NEW_LINE);
-                out.write(quals);
-                out.write(NEW_LINE);
-            } catch (IOException ioe) {
-                throw new RuntimeIOException(ioe);
             }
+
+            FastqRecord record = new FastqRecord(name, bases, "", quals);
+            out.write(record);
         }
 
         @Override
         public void close() {
             try {
-                for (final OutputStream out : templateOut) out.close();
-                for (final OutputStream out : sampleBarcodeOut) out.close();
-                for (final OutputStream out : molecularBarcodeOut) out.close();
+                writerPool.close();
             } catch (IOException ioe) {
                 throw new RuntimeIOException(ioe);
             }
