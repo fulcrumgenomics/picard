@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * BasecallsConverter utilizes an underlying IlluminaDataProvider to convert parsed and decoded sequencing data
@@ -100,8 +101,11 @@ public abstract class BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
             this.laneFactories[i].setApplyEamssFiltering(applyEamssFiltering);
         }
         this.includeNonPfReads = includeNonPfReads;
-        this.tiles = laneFactories[0].getAvailableTiles();
-        tiles.sort(TILE_NUMBER_COMPARATOR);
+        Set<Integer> allTiles = new TreeSet<>(TILE_NUMBER_COMPARATOR);
+        for(IlluminaDataProviderFactory laneFactory: laneFactories) {
+            allTiles.addAll(laneFactory.getAvailableTiles());
+        }
+        this.tiles = new ArrayList<>(allTiles);
         setTileLimits(firstTile, tileLimit);
     }
 
