@@ -96,18 +96,20 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             noMatch = barcodeExtractor.getNoMatchMetric().copy();
         }
         for(IlluminaDataProviderFactory laneFactory : laneFactories) {
-            for (Integer tile : tiles) {
-                final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tile);
+            for (Integer tileNum : tiles) {
+                if (laneFactory.getAvailableTiles().contains(tileNum)) {
+                    final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
 
-                while (dataProvider.hasNext()) {
-                    final ClusterData cluster = dataProvider.next();
-                    if (includeNonPfReads || cluster.isPf()) {
-                        final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
-                        barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
-                        progressLogger.record(null, 0);
+                    while (dataProvider.hasNext()) {
+                        final ClusterData cluster = dataProvider.next();
+                        if (includeNonPfReads || cluster.isPf()) {
+                            final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
+                            barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
+                            progressLogger.record(null, 0);
+                        }
                     }
+                    dataProvider.close();
                 }
-                dataProvider.close();
             }
             updateMetrics(metrics, noMatch);
         }

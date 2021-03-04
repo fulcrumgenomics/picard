@@ -184,17 +184,18 @@ public class SortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsCo
         public void run() {
             final List<SortedRecordToWriterPump> writerList = new ArrayList<>();
             for (IlluminaDataProviderFactory laneFactory : laneFactories) {
-                final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
-
-                while (dataProvider.hasNext()) {
-                    final ClusterData cluster = dataProvider.next();
-                    readProgressLogger.record(null, 0);
-                    if (includeNonPfReads || cluster.isPf()) {
-                        final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
-                        addRecord(barcode, converter.convertClusterToOutputRecord(cluster));
+                if (laneFactory.getAvailableTiles().contains(tileNum)) {
+                    final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
+                    while (dataProvider.hasNext()) {
+                        final ClusterData cluster = dataProvider.next();
+                        readProgressLogger.record(null, 0);
+                        if (includeNonPfReads || cluster.isPf()) {
+                            final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
+                            addRecord(barcode, converter.convertClusterToOutputRecord(cluster));
+                        }
                     }
+                    dataProvider.close();
                 }
-                dataProvider.close();
             }
             barcodeToRecordCollection.forEach((barcode, value) -> {
                 value.doneAdding();
