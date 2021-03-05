@@ -4,6 +4,7 @@ import htsjdk.io.AsyncWriterPool;
 import htsjdk.io.Writer;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.ProgressLogger;
+import picard.PicardException;
 import picard.illumina.parser.BaseIlluminaDataProvider;
 import picard.illumina.parser.ClusterData;
 import picard.illumina.parser.IlluminaDataProviderFactory;
@@ -16,6 +17,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * UnortedBasecallsConverter utilizes an underlying IlluminaDataProvider to convert parsed and decoded sequencing data
@@ -85,9 +90,10 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
      */
     @Override
     public void processTilesAndWritePerSampleOutputs(final Set<String> barcodes) throws IOException {
-        Map<String, BarcodeMetric> metrics = null;
-        BarcodeMetric noMatch = null;
-        if(barcodeExtractor != null) {
+        final Map<String, BarcodeMetric> metrics;
+        final BarcodeMetric noMatch;
+
+        if (barcodeExtractor != null) {
             metrics = new LinkedHashMap<>(barcodeExtractor.getMetrics().size());
             for (final String key : barcodeExtractor.getMetrics().keySet()) {
                 metrics.put(key, barcodeExtractor.getMetrics().get(key).copy());
@@ -95,7 +101,35 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
 
             noMatch = barcodeExtractor.getNoMatchMetric().copy();
         }
+        else {
+            metrics = null;
+            noMatch = null;
+        }
+
         for(IlluminaDataProviderFactory laneFactory : laneFactories) {
+            final BlockingQueue<ClusterData> queue = new ArrayBlockingQueue<>(100000);
+
+            final Runnable router = new Runnable() {
+                @Override public void run() {
+                    while (true) {
+                        try {
+                            final ClusterData cluster = queue.take();
+                            if (cluster.getNumReads() == 0) break;  // Signifies end of processing
+                            final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
+                            barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
+                            progressLogger.record(null, 0);
+
+                        }
+                        catch (InterruptedException ie) {
+                            throw new PicardException("Ooooops", ie);
+                        }
+                    }
+                }
+            };
+
+            final Thread routerThread = new Thread(router, "DemultiplexingThread");
+            routerThread.start();
+
             for (Integer tileNum : tiles) {
                 if (laneFactory.getAvailableTiles().contains(tileNum)) {
                     final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
@@ -103,16 +137,23 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                     while (dataProvider.hasNext()) {
                         final ClusterData cluster = dataProvider.next();
                         if (includeNonPfReads || cluster.isPf()) {
-                            final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory);
-                            barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
-                            progressLogger.record(null, 0);
+                            try { queue.put(cluster); }
+                            catch (InterruptedException ie) { throw new PicardException("Ooopsie", ie); }
                         }
                     }
                     dataProvider.close();
                 }
             }
             updateMetrics(metrics, noMatch);
+
+            try {
+                // Drop an empty item into the router queue and wait for the router thread to exit
+                queue.put(new ClusterData());
+                routerThread.join();
+            }
+            catch (InterruptedException ie) { throw new PicardException("Oops", ie); }
         }
+
         closeWriters();
     }
 }
