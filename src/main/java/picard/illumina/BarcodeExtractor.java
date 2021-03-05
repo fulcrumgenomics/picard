@@ -22,7 +22,7 @@ public class BarcodeExtractor {
     private final int maxNoCalls, maxMismatches, minMismatchDelta, minimumBaseQuality;
     private final DistanceMetric distanceMode;
     private final static int INITIAL_LOOKUP_SIZE = 4096;
-    private final ConcurrentHashMap<ByteString, BarcodeMatch> barcodeLookupMap = new ConcurrentHashMap<>(INITIAL_LOOKUP_SIZE);
+    private final HashMap<ByteString, BarcodeMatch> barcodeLookupMap = new HashMap<>(INITIAL_LOOKUP_SIZE);
 
     public BarcodeExtractor(final Map<String, BarcodeMetric> barcodeToMetrics,
                             final BarcodeMetric noMatchMetric,
