@@ -40,8 +40,10 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
+import java.util.stream.IntStream;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -76,7 +78,6 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
     private static final int HEADER_SIZE = 4;
     private static final int QUEUE_SIZE = 128;
     private final Queue<BclData> queue  = new ArrayDeque<>(QUEUE_SIZE);
-    private final byte[] buffer         = new byte[QUEUE_SIZE];
 
     public BclReader(final List<File> bclsForOneTile, final int[] outputLengths,
                      final BclQualityEvaluationStrategy bclQualityEvaluationStrategy, final boolean seekable) {
@@ -224,11 +225,12 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
     }
 
     void advance() {
+        final byte[] initialBuffer  = new byte[QUEUE_SIZE];
         int totalCycleCount = 0;
-
+        byte[][] allReadData = new byte[cycles][];
         try {
             // See how many clusters we can read and then make BclData objects for them
-            final int clustersRead = this.streams[0].read(buffer);
+            final int clustersRead = this.streams[0].read(initialBuffer);
             if (clustersRead == -1) return;
 
             final BclData[] bclDatas = new BclData[clustersRead];
@@ -236,26 +238,34 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
                 bclDatas[i] = new BclData(outputLengths);
             }
 
+            allReadData[0] = initialBuffer;
             // Process the data from the first cycle since we had to read it to know how many clusters we'd get
-            updateClusterBclDatas(bclDatas, 0, 0);
+            updateClusterBclDatas(bclDatas, 0, 0, initialBuffer);
             totalCycleCount += 1;
 
+            IntStream cycleStream = IntStream.range(1, cycles);
+
+            cycleStream.unordered().parallel().forEach(cycle -> {
+                final byte[] buffer  = new byte[QUEUE_SIZE];
+                try {
+                    final int n = this.streams[cycle].read(buffer, 0, clustersRead);
+                    assert n == clustersRead;
+                    allReadData[cycle] = buffer;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
             for (int read = 0; read < numReads; ++read) {
                 final int readLen = this.outputLengths[read];
                 final int firstCycle = (read == 0) ? 1 : 0;  // For the first read we already did the first cycle above
 
                 for (int cycle = firstCycle; cycle < readLen; ++cycle) {
-                    final int n = this.streams[totalCycleCount].read(buffer, 0, clustersRead);
-                    assert n == clustersRead;
+                    updateClusterBclDatas(bclDatas, read, cycle, allReadData[totalCycleCount]);
                     totalCycleCount += 1;
-
-                    updateClusterBclDatas(bclDatas, read, cycle);
                 }
             }
 
-            for (final BclData data : bclDatas) {
-              this.queue.add(data);
-            }
+            this.queue.addAll(Arrays.asList(bclDatas));
         }
         catch (final IOException ioe) {
             throw new RuntimeIOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
@@ -264,11 +274,11 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
     }
 
     /** Inserts the bases and quals at `cycle` of `read` in all of the bclDatas, using data in this.buffer. */
-    private void updateClusterBclDatas(final BclData[] bclDatas, final int read, final int cycle) {
+    private void updateClusterBclDatas(final BclData[] bclDatas, final int read, final int cycle, final byte[] buffer) {
         final int numClusters = bclDatas.length;
         for (int dataIdx = 0; dataIdx< numClusters; ++dataIdx) {
             final BclData data = bclDatas[dataIdx];
-            final int b = Byte.toUnsignedInt(this.buffer[dataIdx]);
+            final int b = Byte.toUnsignedInt(buffer[dataIdx]);
             decodeBasecall(data, read, cycle, b);
         }
     }

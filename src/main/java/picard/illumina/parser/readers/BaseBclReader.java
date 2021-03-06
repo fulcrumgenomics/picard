@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.zip.GZIPInputStream;
 
 public class BaseBclReader {
@@ -45,13 +46,7 @@ public class BaseBclReader {
         this.outputLengths = outputLengths;
         this.numReads = outputLengths.length;
         this.bclQualityEvaluationStrategy = bclQualityEvaluationStrategy;
-
-        int cycles = 0;
-        for (final int outputLength : outputLengths) {
-            cycles += outputLength;
-        }
-
-        this.cycles = cycles;
+        this.cycles = Arrays.stream(outputLengths).sum();
         this.streams = new InputStream[cycles];
         this.streamFiles = new File[cycles];
         this.numClustersPerCycle = new int[cycles];
