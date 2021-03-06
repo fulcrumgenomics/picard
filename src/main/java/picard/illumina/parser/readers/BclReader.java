@@ -43,6 +43,10 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinWorkerThread;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import java.util.zip.GZIPInputStream;
 
@@ -76,8 +80,15 @@ import java.util.zip.GZIPInputStream;
  */
 public class BclReader extends BaseBclReader implements CloseableIterator<BclData> {
     private static final int HEADER_SIZE = 4;
-    private static final int QUEUE_SIZE = 128;
+    private static final int QUEUE_SIZE = 4096;
     private final Queue<BclData> queue  = new ArrayDeque<>(QUEUE_SIZE);
+    private static final ForkJoinPool.ForkJoinWorkerThreadFactory factory = pool -> {
+        final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+        worker.setName("raw-read-worker-" + worker.getPoolIndex());
+        return worker;
+    };
+    private static final ForkJoinPool customThreadPool = new ForkJoinPool(4, factory, null, false);
+
 
     public BclReader(final List<File> bclsForOneTile, final int[] outputLengths,
                      final BclQualityEvaluationStrategy bclQualityEvaluationStrategy, final boolean seekable) {
@@ -243,18 +254,24 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
             updateClusterBclDatas(bclDatas, 0, 0, initialBuffer);
             totalCycleCount += 1;
 
-            IntStream cycleStream = IntStream.range(1, cycles);
+            int test = customThreadPool.submit(() -> {
+                AtomicInteger totalClustersRead = new AtomicInteger();
+                        IntStream.range(1, cycles).unordered().parallel().forEach(cycle -> {
+                            final byte[] buffer = new byte[QUEUE_SIZE];
+                            try {
+                                final int n = this.streams[cycle].read(buffer, 0, clustersRead);
+                                totalClustersRead.addAndGet(n);
+                                allReadData[cycle] = buffer;
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        });
+                        return totalClustersRead.get() / cycles;
+                    }
+            ).get();
 
-            cycleStream.unordered().parallel().forEach(cycle -> {
-                final byte[] buffer  = new byte[QUEUE_SIZE];
-                try {
-                    final int n = this.streams[cycle].read(buffer, 0, clustersRead);
-                    assert n == clustersRead;
-                    allReadData[cycle] = buffer;
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
+            //assert read buffer
+
             for (int read = 0; read < numReads; ++read) {
                 final int readLen = this.outputLengths[read];
                 final int firstCycle = (read == 0) ? 1 : 0;  // For the first read we already did the first cycle above
@@ -270,6 +287,10 @@ public class BclReader extends BaseBclReader implements CloseableIterator<BclDat
         catch (final IOException ioe) {
             throw new RuntimeIOException(String.format("Error while reading from BCL file for cycle %d. Offending file on disk is %s",
                                     (totalCycleCount+1), this.streamFiles[totalCycleCount].getAbsolutePath()), ioe);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
         }
     }
 
