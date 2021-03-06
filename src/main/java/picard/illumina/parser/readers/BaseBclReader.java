@@ -93,7 +93,7 @@ public class BaseBclReader {
 
     final void decodeBasecall(final BclData bclData, final int read, final int cycle, final int byteToDecode) {
         bclData.bases[read][cycle] = BCL_BASE_LOOKUP[byteToDecode];
-        bclData.qualities[read][cycle] = this.bclQualityEvaluationStrategy.reviseAndConditionallyLogQuality(BCL_QUAL_LOOKUP[byteToDecode]);
+        bclData.qualities[read][cycle] = BCL_QUAL_LOOKUP[byteToDecode];
     }
 
     void decodeQualityBinnedBasecall(final BclData bclData, final int read, final int cycle, final int byteToDecode,
