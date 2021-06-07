@@ -129,7 +129,15 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
     @Override
     public void processTilesAndWritePerSampleOutputs(final Set<String> barcodes) throws IOException {
         for(IlluminaDataProviderFactory laneFactory : laneFactories) {
+            ThreadPoolExecutorWithExceptions tileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
             for (Integer tileNum : tiles) {
+                tileWriters.shutdown();
+                ThreadPoolExecutorUtil.awaitThreadPoolTermination("Writing executor", tileWriters, Duration.ofMinutes(5));
+
+                // Check for tile work synchronization errors
+                if (tileWriters.hasError()) {
+                    interruptAndShutdownExecutors(tileWriters);
+                }
                 if (laneFactory.getAvailableTiles().contains(tileNum)) {
                     final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
                     Map<String, Queue<ClusterData>> barcodeToClusterData = new HashMap<>();
@@ -143,15 +151,8 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                         }
                     }
                     dataProvider.close();
-                    ThreadPoolExecutorWithExceptions tileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
-                    barcodeToClusterData.keySet().forEach(barcode -> tileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
-                    tileWriters.shutdown();
-                    ThreadPoolExecutorUtil.awaitThreadPoolTermination("Writing executor", tileWriters, Duration.ofMinutes(5));
-
-                    // Check for tile work synchronization errors
-                    if (tileWriters.hasError()) {
-                        interruptAndShutdownExecutors(tileWriters);
-                    }
+                    ThreadPoolExecutorWithExceptions finalTileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
+                    barcodeToClusterData.keySet().forEach(barcode -> finalTileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
                 }
             }
         }
