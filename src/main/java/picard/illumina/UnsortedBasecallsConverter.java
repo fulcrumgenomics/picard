@@ -9,11 +9,17 @@ import picard.illumina.parser.ClusterData;
 import picard.illumina.parser.IlluminaDataProviderFactory;
 import picard.illumina.parser.ReadStructure;
 import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
+import picard.util.ThreadPoolExecutorUtil;
+import picard.util.ThreadPoolExecutorWithExceptions;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 
 /**
@@ -33,6 +39,7 @@ import java.util.Set;
 public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends BasecallsConverter<CLUSTER_OUTPUT_RECORD> {
     private static final Log log = Log.getInstance(UnsortedBasecallsConverter.class);
     private final ProgressLogger progressLogger = new ProgressLogger(log, 1000000, "Processed");
+    private final Integer numThreads;
     private Map<String, BarcodeMetric> metrics;
     private BarcodeMetric noMatch;
 
@@ -68,12 +75,13 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             final boolean applyEamssFiltering,
             final boolean includeNonPfReads,
             final AsyncWriterPool writerPool,
-            final BarcodeExtractor barcodeExtractor
+            final BarcodeExtractor barcodeExtractor,
+            final Integer numThreads
     ) {
         super(basecallsDir, barcodesDir, lanes, readStructure, barcodeRecordWriterMap, demultiplex,
                 firstTile, tileLimit, bclQualityEvaluationStrategy,
                 ignoreUnexpectedBarcodes, applyEamssFiltering, includeNonPfReads, writerPool, barcodeExtractor);
-
+        this.numThreads = numThreads;
         if (barcodeExtractor != null) {
             this.metrics = new LinkedHashMap<>(barcodeExtractor.getMetrics().size());
             for (final String key : barcodeExtractor.getMetrics().keySet()) {
@@ -83,7 +91,29 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
             this.noMatch = barcodeExtractor.getNoMatchMetric().copy();
         }
     }
+    /**
+     * SortedRecordToWriterPump takes a collection of output records and writes them using a
+     * ConvertedClusterDataWriter.
+     */
+    private class TileRecordToWriterPump implements Runnable {
+        private final Queue<ClusterData> clusterDataQueue;
+        private final Writer<CLUSTER_OUTPUT_RECORD> writer;
 
+        TileRecordToWriterPump(final Queue<ClusterData> clusterDataQueue,
+                               final Writer<CLUSTER_OUTPUT_RECORD> writer) {
+            this.clusterDataQueue = clusterDataQueue;
+            this.writer = writer;
+        }
+
+        @Override
+        public void run() {
+            while(!clusterDataQueue.isEmpty()) {
+                ClusterData cluster = clusterDataQueue.remove();
+                writer.write(converter.convertClusterToOutputRecord(cluster));
+                progressLogger.record(null, 0);
+            }
+        }
+    }
     /**
      * Set up tile processing and record writing threads for this converter.  This creates a tile reading thread
      * pool of size 4. The tile processing threads notify the completed work checking thread when they are
@@ -96,22 +126,34 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
     @Override
     public void processTilesAndWritePerSampleOutputs(final Set<String> barcodes) throws IOException {
         for(IlluminaDataProviderFactory laneFactory : laneFactories) {
+            ThreadPoolExecutorWithExceptions tileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
             for (Integer tileNum : tiles) {
+                tileWriters.shutdown();
+                ThreadPoolExecutorUtil.awaitThreadPoolTermination("Writing executor", tileWriters, Duration.ofMinutes(5));
+
+                // Check for tile work synchronization errors
+                if (tileWriters.hasError()) {
+                    interruptAndShutdownExecutors(tileWriters);
+                }
                 if (laneFactory.getAvailableTiles().contains(tileNum)) {
                     final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
-
+                    Map<String, Queue<ClusterData>> barcodeToClusterData = new HashMap<>();
                     while (dataProvider.hasNext()) {
                         final ClusterData cluster = dataProvider.next();
                         if (includeNonPfReads || cluster.isPf()) {
                             final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory.getOutputReadStructure());
-                            barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
-                            progressLogger.record(null, 0);
+                            barcodeRecordWriterMap.get(barcode);
+                            Queue<ClusterData> clusterDataQueue = barcodeToClusterData.computeIfAbsent(barcode, (k) -> new ArrayDeque<>());
+                            clusterDataQueue.add(cluster);
                         }
                     }
                     dataProvider.close();
+                    ThreadPoolExecutorWithExceptions finalTileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
+                    barcodeToClusterData.keySet().forEach(barcode -> finalTileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
                 }
             }
         }
+
         updateMetrics(metrics, noMatch);
         closeWriters();
     }
