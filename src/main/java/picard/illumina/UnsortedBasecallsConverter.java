@@ -108,7 +108,8 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
 
         @Override
         public void run() {
-            for(ClusterData cluster: clusterDataQueue) {
+            while(!clusterDataQueue.isEmpty()) {
+                ClusterData cluster = clusterDataQueue.remove();
                 final String barcode = maybeDemultiplex(cluster, metrics, noMatch, readStructure);
                 barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
                 progressLogger.record(null, 0);
