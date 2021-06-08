@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * UnortedBasecallsConverter utilizes an underlying IlluminaDataProvider to convert parsed and decoded sequencing data
@@ -129,15 +130,11 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
     @Override
     public void processTilesAndWritePerSampleOutputs(final Set<String> barcodes) throws IOException {
         for(IlluminaDataProviderFactory laneFactory : laneFactories) {
-            ThreadPoolExecutorWithExceptions tileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
+            ThreadPoolExecutorWithExceptions tileWriter = null;
             for (Integer tileNum : tiles) {
-                tileWriters.shutdown();
-                ThreadPoolExecutorUtil.awaitThreadPoolTermination("Writing executor", tileWriters, Duration.ofMinutes(5));
+                // Shut down the previous tile writer once it is done writing.
+                awaitTileWriting(tileWriter);
 
-                // Check for tile work synchronization errors
-                if (tileWriters.hasError()) {
-                    interruptAndShutdownExecutors(tileWriters);
-                }
                 if (laneFactory.getAvailableTiles().contains(tileNum)) {
                     final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
                     Map<String, Queue<ClusterData>> barcodeToClusterData = new HashMap<>();
@@ -152,12 +149,28 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                     }
                     dataProvider.close();
                     ThreadPoolExecutorWithExceptions finalTileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
+                    tileWriter = finalTileWriters;
                     barcodeToClusterData.keySet().forEach(barcode -> finalTileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
                 }
             }
+            awaitTileWriting(tileWriter);
         }
 
         updateMetrics(metrics, noMatch);
         closeWriters();
+    }
+
+    private void awaitTileWriting(ThreadPoolExecutorWithExceptions tileWriter) {
+        if (tileWriter != null) {
+            tileWriter.shutdown();
+            ThreadPoolExecutorUtil.awaitThreadPoolTermination("Writing executor", tileWriter, Duration.ofMinutes(5));
+
+            // Check for tile work synchronization errors
+            if (tileWriter.hasError()) {
+                interruptAndShutdownExecutors(tileWriter);
+            }
+
+            tileWriter.cleanUp();
+        }
     }
 }
