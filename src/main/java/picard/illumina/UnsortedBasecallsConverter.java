@@ -139,7 +139,6 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                         final ClusterData cluster = dataProvider.next();
                         if (includeNonPfReads || cluster.isPf()) {
                             final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory.getOutputReadStructure());
-                            barcodeRecordWriterMap.get(barcode);
                             Queue<ClusterData> clusterDataQueue = barcodeToClusterData.computeIfAbsent(barcode, (k) -> new ArrayDeque<>());
                             clusterDataQueue.add(cluster);
                         }
