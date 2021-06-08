@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * UnortedBasecallsConverter utilizes an underlying IlluminaDataProvider to convert parsed and decoded sequencing data
@@ -131,6 +132,9 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                 tileWriters.shutdown();
                 ThreadPoolExecutorUtil.awaitThreadPoolTermination("Writing executor", tileWriters, Duration.ofMinutes(5));
 
+                // Set the old executor core size to 0 to ensure threads get killed an GCd
+                tileWriters.setCorePoolSize(0);
+
                 // Check for tile work synchronization errors
                 if (tileWriters.hasError()) {
                     interruptAndShutdownExecutors(tileWriters);
@@ -149,6 +153,7 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                     }
                     dataProvider.close();
                     ThreadPoolExecutorWithExceptions finalTileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
+                    tileWriters = finalTileWriters;
                     barcodeToClusterData.keySet().forEach(barcode -> finalTileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
                 }
             }
