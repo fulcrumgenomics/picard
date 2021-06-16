@@ -101,19 +101,20 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
      */
     private class TileRecordToWriterPump implements Runnable {
         private final Queue<ClusterData> clusterDataQueue;
-        private final Writer<CLUSTER_OUTPUT_RECORD> writer;
+        private final ReadStructure readStructure;
 
         TileRecordToWriterPump(final Queue<ClusterData> clusterDataQueue,
-                               final Writer<CLUSTER_OUTPUT_RECORD> writer) {
+                               final ReadStructure readStructure) {
             this.clusterDataQueue = clusterDataQueue;
-            this.writer = writer;
+            this.readStructure = readStructure;
         }
 
         @Override
         public void run() {
             while(!clusterDataQueue.isEmpty()) {
                 ClusterData cluster = clusterDataQueue.remove();
-                writer.write(converter.convertClusterToOutputRecord(cluster));
+                final String barcode = maybeDemultiplex(cluster, metrics, noMatch, readStructure);
+                barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
                 progressLogger.record(null, 0);
             }
         }
@@ -137,19 +138,16 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
 
                 if (laneFactory.getAvailableTiles().contains(tileNum)) {
                     final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
-                    Map<String, Queue<ClusterData>> barcodeToClusterData = new HashMap<>();
+                    Queue<ClusterData> clusterDataQueue = new ArrayDeque<>();
                     while (dataProvider.hasNext()) {
                         final ClusterData cluster = dataProvider.next();
                         if (includeNonPfReads || cluster.isPf()) {
-                            final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory.getOutputReadStructure());
-                            Queue<ClusterData> clusterDataQueue = barcodeToClusterData.computeIfAbsent(barcode, (k) -> new ArrayDeque<>());
                             clusterDataQueue.add(cluster);
                         }
                     }
                     dataProvider.close();
-                    ThreadPoolExecutorWithExceptions finalTileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
-                    tileWriter = finalTileWriters;
-                    barcodeToClusterData.keySet().forEach(barcode -> finalTileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
+                    tileWriter = new ThreadPoolExecutorWithExceptions(1);;
+                    tileWriter.submit(new TileRecordToWriterPump(clusterDataQueue, laneFactory.getOutputReadStructure()));
                 }
             }
             awaitTileWriting(tileWriter);
