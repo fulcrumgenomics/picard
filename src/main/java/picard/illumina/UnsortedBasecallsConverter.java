@@ -4,12 +4,9 @@ import htsjdk.io.AsyncWriterPool;
 import htsjdk.io.Writer;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.ProgressLogger;
-import ngs.Read;
-import org.apache.commons.collections4.queue.CircularFifoQueue;
 import picard.illumina.parser.BaseIlluminaDataProvider;
 import picard.illumina.parser.ClusterData;
 import picard.illumina.parser.IlluminaDataProviderFactory;
-import picard.illumina.parser.OutputMapping;
 import picard.illumina.parser.ReadStructure;
 import picard.illumina.parser.readers.BclQualityEvaluationStrategy;
 import picard.util.ThreadPoolExecutorUtil;
@@ -101,21 +98,21 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
      */
     private class TileRecordToWriterPump implements Runnable {
         private final Queue<ClusterData> clusterDataQueue;
-        private final ReadStructure readStructure;
+        private final Writer<CLUSTER_OUTPUT_RECORD> writer;
 
         TileRecordToWriterPump(final Queue<ClusterData> clusterDataQueue,
-                               final ReadStructure readStructure) {
+                               final Writer<CLUSTER_OUTPUT_RECORD> writer) {
             this.clusterDataQueue = clusterDataQueue;
-            this.readStructure = readStructure;
+            this.writer = writer;
         }
 
         @Override
         public void run() {
-            clusterDataQueue.parallelStream().forEachOrdered( cluster -> {
-                final String barcode = maybeDemultiplex(cluster, metrics, noMatch, readStructure);
-                barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
+            while(!clusterDataQueue.isEmpty()) {
+                ClusterData cluster = clusterDataQueue.remove();
+                writer.write(converter.convertClusterToOutputRecord(cluster));
                 progressLogger.record(null, 0);
-            });
+            }
         }
     }
     /**
@@ -137,6 +134,7 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
 
                 if (laneFactory.getAvailableTiles().contains(tileNum)) {
                     final BaseIlluminaDataProvider dataProvider = laneFactory.makeDataProvider(tileNum);
+                    Map<String, Queue<ClusterData>> barcodeToClusterData = new HashMap<>();
                     Queue<ClusterData> clusterDataQueue = new ArrayDeque<>();
                     while (dataProvider.hasNext()) {
                         final ClusterData cluster = dataProvider.next();
@@ -145,8 +143,16 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                         }
                     }
                     dataProvider.close();
-                    tileWriter = new ThreadPoolExecutorWithExceptions(1);
-                    tileWriter.submit(new TileRecordToWriterPump(clusterDataQueue, laneFactory.getOutputReadStructure()));
+
+                    clusterDataQueue.parallelStream().forEachOrdered(cluster -> {
+                        final String barcode = maybeDemultiplex(cluster, metrics, noMatch, laneFactory.getOutputReadStructure());
+                        Queue<ClusterData> barcodeDataQueue = barcodeToClusterData.computeIfAbsent(barcode, (k) -> new ArrayDeque<>());
+                        barcodeDataQueue.add(cluster);
+                    });
+
+                    ThreadPoolExecutorWithExceptions finalTileWriters = new ThreadPoolExecutorWithExceptions(numThreads);
+                    tileWriter = finalTileWriters;
+                    barcodeToClusterData.keySet().forEach(barcode -> finalTileWriters.submit(new TileRecordToWriterPump(barcodeToClusterData.get(barcode), barcodeRecordWriterMap.get(barcode))));
                 }
             }
             awaitTileWriting(tileWriter);
