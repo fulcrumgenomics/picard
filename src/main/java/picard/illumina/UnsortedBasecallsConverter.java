@@ -108,12 +108,11 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
 
         @Override
         public void run() {
-            while(!clusterDataQueue.isEmpty()) {
-                ClusterData cluster = clusterDataQueue.remove();
+            clusterDataQueue.parallelStream().forEachOrdered( cluster -> {
                 final String barcode = maybeDemultiplex(cluster, metrics, noMatch, readStructure);
                 barcodeRecordWriterMap.get(barcode).write(converter.convertClusterToOutputRecord(cluster));
                 progressLogger.record(null, 0);
-            }
+            });
         }
     }
     /**
@@ -143,7 +142,7 @@ public class UnsortedBasecallsConverter<CLUSTER_OUTPUT_RECORD> extends Basecalls
                         }
                     }
                     dataProvider.close();
-                    tileWriter = new ThreadPoolExecutorWithExceptions(1);;
+                    tileWriter = new ThreadPoolExecutorWithExceptions(1);
                     tileWriter.submit(new TileRecordToWriterPump(clusterDataQueue, laneFactory.getOutputReadStructure()));
                 }
             }
